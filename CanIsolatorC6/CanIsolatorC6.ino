@@ -1,7 +1,8 @@
 // CanIsolatorC6.ino
 // Two-bus CAN isolator / gateway for the TechOverflow CANipulator
 // (ESP32-C6-WROOM-1U, two on-chip TWAI controllers, two CAN transceivers).
-// Port of CanIsolator.ino (Teensy 4.x / FlexCAN_T4).
+// Originally ported from the Teensy 4.x / FlexCAN_T4 version (deprecated;
+// see the git tag "teensy-final").
 // Toolchain: Arduino-ESP32 4.x (ESP-IDF 6.x) - uses the IDF "esp_twai" driver.
 //
 // ============================================================
@@ -141,8 +142,8 @@ static const uint8_t  PROTO_VERSION = 1;
 // ---------------------------------------------------------------------------
 // FRAME TYPE
 // ---------------------------------------------------------------------------
-// Same field names as FlexCAN_T4's CAN_message_t, so the transforms and
-// generators below are source-compatible with the Teensy version.
+// Field names follow FlexCAN_T4's CAN_message_t (kept from the original
+// Teensy port) so the transforms and generators read the same.
 struct CAN_message_t {
   uint32_t id = 0;
   uint16_t timestamp = 0;        // isolator use: millis() when queued for TX
