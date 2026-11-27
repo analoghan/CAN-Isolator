@@ -7,6 +7,8 @@
 //                out = round(raw * factor + offset), clamped to the field.
 //   GS_COUNTER : a rolling counter, +step every frame sent, wraps at the
 //                field size.
+//   GS_CHECKSUM: a checksum / CRC of the frame's bytes (see CHECKSUMS below),
+//                worked out after every other field.
 //
 // Bit numbering follows DBC files: position = byte * 8 + bit, bit 0 = least
 // significant bit of the byte.
@@ -25,7 +27,7 @@ static const uint8_t MAX_GEN     = 8;    // generated frames
 static const uint8_t MAX_GEN_SIG = 4;    // fields per generated frame
 static const uint8_t GEN_NAME_LEN = 24;  // including the terminating 0
 
-enum GenSigKind  : uint8_t { GS_NONE = 0, GS_SOURCE = 1, GS_COUNTER = 2 };
+enum GenSigKind  : uint8_t { GS_NONE = 0, GS_SOURCE = 1, GS_COUNTER = 2, GS_CHECKSUM = 3 };
 enum GenBitOrder : uint8_t { BO_MOTOROLA = 0, BO_INTEL = 1 };   // DBC @0 / @1
 
 struct GenSigCfg {
@@ -126,6 +128,58 @@ static inline uint32_t genScale(uint32_t raw, const GenSigCfg &s) {
   return (uint32_t)r;                                       // two's complement for negatives
 }
 
+// ===========================================================================
+// CHECKSUMS (generated-frame field GS_CHECKSUM, transform step XO_CHECKSUM)
+// ===========================================================================
+// Many modules only accept a frame whose checksum byte (or nibble) matches its
+// data. Settings use the same struct fields in GenSigCfg and XfOpCfg:
+//   srcBus            : algorithm (CkAlgo)
+//   srcStart, srcLen  : first and last data byte covered (0-7); bytes past
+//                       the frame's length read 0
+//   srcExt            : 1 = also cover the ID (big-endian: 2 bytes for 11-bit,
+//                       4 for 29-bit) and the data length, before the data
+//   srcId             : CRC-8 only: polynomial | initial value << 8 | final XOR << 16
+//   staleMs           : constant 0-255, added (sums, CRC) or XORed (XORs)
+//   step              : then 0 = as is, 1 = invert (~x), 2 = two's complement (-x)
+// The low dstLen bits (1-8) of the result go into the dst field. The field's
+// own bits read 0 while the checksum is worked out, so it may sit inside the
+// covered bytes.
+enum CkAlgo : uint8_t { CK_SUM = 0, CK_SUM_NIB = 1, CK_XOR = 2, CK_XOR_NIB = 3, CK_CRC8 = 4, CK_COUNT };
+static const uint8_t CK_FINAL_COUNT = 3;
+
+template <typename F>
+static inline uint32_t ckCompute(const F &s, const uint8_t data[8], uint8_t len, uint32_t id, uint8_t ext) {
+  uint8_t b[8];
+  memcpy(b, data, 8);
+  genPut(b, s.dstStart, s.dstLen, s.dstOrder, 0);
+  uint8_t seq[13], n = 0;
+  if (s.srcExt) {
+    if (ext) { seq[n++] = (uint8_t)(id >> 24); seq[n++] = (uint8_t)(id >> 16); }
+    seq[n++] = (uint8_t)(id >> 8); seq[n++] = (uint8_t)id; seq[n++] = len;
+  }
+  for (uint8_t i = s.srcStart; i <= s.srcLen && i < 8; i++) seq[n++] = i < len ? b[i] : 0;
+  uint32_t r = 0;
+  switch (s.srcBus) {
+    case CK_SUM:     for (uint8_t i = 0; i < n; i++) r += seq[i]; break;
+    case CK_SUM_NIB: for (uint8_t i = 0; i < n; i++) r += (seq[i] >> 4) + (seq[i] & 15); break;
+    case CK_XOR:     for (uint8_t i = 0; i < n; i++) r ^= seq[i]; break;
+    case CK_XOR_NIB: for (uint8_t i = 0; i < n; i++) r ^= (seq[i] >> 4) ^ (seq[i] & 15); break;
+    case CK_CRC8: {
+      const uint8_t poly = s.srcId & 0xFF, init = (s.srcId >> 8) & 0xFF, xorOut = (s.srcId >> 16) & 0xFF;
+      uint8_t c = init;
+      for (uint8_t i = 0; i < n; i++) {
+        c ^= seq[i];
+        for (uint8_t k = 0; k < 8; k++) c = (c & 0x80) ? (uint8_t)((c << 1) ^ poly) : (uint8_t)(c << 1);
+      }
+      r = c ^ xorOut;
+      break;
+    }
+  }
+  if (s.srcBus == CK_XOR || s.srcBus == CK_XOR_NIB) r ^= s.staleMs; else r += s.staleMs;
+  if (s.step == 1) r = ~r; else if (s.step == 2) r = 0u - r;
+  return r & ((1u << s.dstLen) - 1);
+}
+
 // Build one frame. getSrc(i) must return a pointer to the 8 data bytes of
 // signal i's source frame, or nullptr if it is missing / stale / too short.
 // counters[] holds each counter field's state. Returns false (frame
@@ -143,6 +197,10 @@ static inline bool genBuild(const GenCfg &g, uint8_t out[8], uint32_t counters[M
     } else if (s.kind == GS_COUNTER) {
       genPut(out, s.dstStart, s.dstLen, s.dstOrder, counters[i]);
     }
+  }
+  for (uint8_t i = 0; i < g.numSig; i++) {          // checksums last, over the finished bytes
+    const GenSigCfg &s = g.sig[i];
+    if (s.kind == GS_CHECKSUM) genPut(out, s.dstStart, s.dstLen, s.dstOrder, ckCompute(s, out, g.len, g.id, g.ext));
   }
   for (uint8_t i = 0; i < g.numSig; i++) {
     const GenSigCfg &s = g.sig[i];
@@ -169,6 +227,8 @@ static inline bool genBuild(const GenCfg &g, uint8_t out[8], uint32_t counters[M
 //   XO_COND      : forward the frame only if the src field (raw, signed if
 //                  srcSigned) compares true with 'value' (cmp)
 //   XO_COUNTER   : write a rolling counter into the dst field, +step per frame
+//   XO_CHECKSUM  : write a checksum / CRC of the frame as it is at this step
+//                  (see CHECKSUMS; put it after the steps that change the data)
 //
 // Sources: srcBus 0 / 1 = the latest cached frame srcId on Bus A / B,
 //          XS_THIS (2)  = this frame as it was received (before any step).
@@ -192,7 +252,7 @@ static const uint8_t XF_CATCH_TAPS      = 0x04;   // COPY from a cached frame on
 static const uint8_t XF_MASK            = 0x08;   // COPY only: 'value' = bits to write
 static const uint8_t XF_FLAGS_ALL       = 0x0F;
 
-enum XfOpKind : uint8_t { XO_NONE = 0, XO_SET_ID = 1, XO_SET_LEN = 2, XO_SET_FIELD = 3, XO_COPY = 4, XO_COND = 5, XO_COUNTER = 6 };
+enum XfOpKind : uint8_t { XO_NONE = 0, XO_SET_ID = 1, XO_SET_LEN = 2, XO_SET_FIELD = 3, XO_COPY = 4, XO_COND = 5, XO_COUNTER = 6, XO_CHECKSUM = 7 };
 enum XfCmp    : uint8_t { XC_EQ = 0, XC_NE, XC_LT, XC_LE, XC_GT, XC_GE, XC_ALL_BITS, XC_ANY_BIT, XC_COUNT };
 
 struct XfOpCfg {
@@ -291,6 +351,9 @@ static inline bool xfApply(const XfCfg &x, uint32_t &id, uint8_t &ext, uint8_t &
       }
       case XO_COUNTER:
         genPut(data, o.dstStart, o.dstLen, o.dstOrder, counters[i]);
+        break;
+      case XO_CHECKSUM:
+        genPut(data, o.dstStart, o.dstLen, o.dstOrder, ckCompute(o, data, len, id, ext));
         break;
     }
   }

@@ -1793,7 +1793,10 @@ function genPreview(g, srcRaw, ctr) {
   g.sig.forEach((s, i) => {
     if (!genFits(s.dstStart, s.dstLen, s.dstOrder, g.len)) return;
     if (s.kind === GS_SOURCE) genPutJs(out, s.dstStart, s.dstLen, s.dstOrder, toField(genScaleJs(srcRaw[i] ?? 0, s), s.dstLen));
-    else genPutJs(out, s.dstStart, s.dstLen, s.dstOrder, (ctr[i] ?? 0) % 2 ** s.dstLen);
+    else if (s.kind === GS_COUNTER) genPutJs(out, s.dstStart, s.dstLen, s.dstOrder, (ctr[i] ?? 0) % 2 ** s.dstLen);
+  });
+  g.sig.forEach((s) => {                                    // checksums last, over the finished bytes
+    if (s.kind === GS_CHECKSUM && genFits(s.dstStart, s.dstLen, s.dstOrder, g.len)) genPutJs(out, s.dstStart, s.dstLen, s.dstOrder, ckComputeJs(s, out, g.len, g.id, g.ext));
   });
   return out.slice(0, g.len);
 }
@@ -1823,7 +1826,8 @@ function genIssues(m, gi) {
       if (!Number.isFinite(s.factor) || !Number.isFinite(s.offset)) e.push(`${n}: factor / offset must be numbers`);
       if (!(s.staleMs >= 0 && s.staleMs <= 65535)) e.push(`${n}: stale time 0-65535 ms`);
       if (s.srcId === g.id && s.srcExt === g.ext && s.srcBus === g.bus) w.push(`${n}: reads its own frame`);
-    } else if (!(s.step >= 0 && s.step <= 255)) e.push(`${n}: counter step 0-255`);
+    } else if (s.kind === GS_CHECKSUM) ckIssues(s, n, e, w);
+    else if (!(s.step >= 0 && s.step <= 255)) e.push(`${n}: counter step 0-255`);
   });
   const dupe = m.gens.findIndex((o, j) => j !== gi && o.id === g.id && o.ext === g.ext && o.bus === g.bus);
   if (dupe >= 0) w.push(`same ID and bus as generated frame ${dupe + 1}`);
@@ -1879,7 +1883,8 @@ function genCard(m, g, gi) {
     const swatch = h('span', { class: 'swatch', style: `background:${FIELD_HUES[fi]}` }, String(fi + 1));
     const kindSel = h('select', { onchange: upd(t => { s.kind = +t.value; }, true) },
       h('option', { value: GS_SOURCE, selected: s.kind === GS_SOURCE }, 'Copied from a frame'),
-      h('option', { value: GS_COUNTER, selected: s.kind === GS_COUNTER }, 'Rolling counter'));
+      h('option', { value: GS_COUNTER, selected: s.kind === GS_COUNTER }, 'Rolling counter'),
+      h('option', { value: GS_CHECKSUM, selected: s.kind === GS_CHECKSUM }, 'Checksum / CRC'));
     const picking = genPick && genPick.gi === gi && genPick.fi === fi;
     const dst = h('div', { class: 'toolbar', style: 'margin:6px 0 0' },
       h('b', { style: 'width:120px' }, 'Into this frame'),
@@ -1905,6 +1910,8 @@ function genCard(m, g, gi) {
           h('label', {}, 'out = raw × ', numIn(s, 'factor', 'num', { float: true })), h('label', {}, ' + ', numIn(s, 'offset', 'num', { float: true })),
           h('label', { title: 'If the source frame is older than this, the whole frame is skipped (0 = any age)' }, 'source stale after ', numIn(s, 'staleMs', 'ms'), ' ms'),
           unitsHelper(s, gi)));
+    } else if (s.kind === GS_CHECKSUM) {
+      src = h('div', {}, ckEditor(s, () => { markDirty(); refreshGen(gi); }, () => { markDirty(); renderTab(false); }));
     } else {
       src = h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:120px' }, 'Counter'),
         h('label', {}, 'add ', numIn(s, 'step', 'ms'), ' every frame (wraps at the field size)'));
@@ -1935,7 +1942,9 @@ function genCard(m, g, gi) {
       h('div', {}, fields,
         h('div', { class: 'toolbar', style: 'margin-top:8px' },
           h('button', { class: 'small', disabled: g.sig.length >= maxSig, onclick: () => { g.sig.push(newField(GS_SOURCE)); markDirty(); renderTab(false); } }, '+ Field from a frame'),
-          h('button', { class: 'small', disabled: g.sig.length >= maxSig, onclick: () => { const f = newField(GS_COUNTER); f.dstStart = 0; f.dstLen = 4; f.dstOrder = BO_INTEL; g.sig.push(f); markDirty(); renderTab(false); } }, '+ Rolling counter'))),
+          h('button', { class: 'small', disabled: g.sig.length >= maxSig, onclick: () => { const f = newField(GS_COUNTER); f.dstStart = 0; f.dstLen = 4; f.dstOrder = BO_INTEL; g.sig.push(f); markDirty(); renderTab(false); } }, '+ Rolling counter'),
+          h('button', { class: 'small', disabled: g.sig.length >= maxSig, title: 'A checksum or CRC of the frame’s bytes, worked out after every other field',
+            onclick: () => { g.sig.push({ ...newField(GS_CHECKSUM), srcBus: CK.SUM, srcId: 0, srcExt: 0, srcStart: 0, srcLen: Math.max(0, g.len - 2), dstStart: Math.max(0, g.len - 1) * 8, dstLen: 8, dstOrder: BO_INTEL, staleMs: 0, step: 0 }); markDirty(); renderTab(false); } }, '+ Checksum'))),
       genSide(g, gi)));
 }
 
@@ -1978,7 +1987,7 @@ function genSide(g, gi) {
       }),
       h('td', { class: 'num mono' }, fmtByte(preview[by]))))));
 
-  const tests = g.sig.map((s, i) => s.kind === GS_SOURCE
+  const tests = g.sig.map((s, i) => s.kind === GS_CHECKSUM ? null : s.kind === GS_SOURCE
     ? h('label', { style: 'display:block;margin-top:4px' }, `Field ${i + 1} source raw (${isHex() ? 'hex' : 'dec'}) `,
         h('input', { class: 'id', value: isHex() ? (t.src[i] ?? 0).toString(16).toUpperCase() : (t.src[i] ?? 0), oninput: (ev) => {
           const v = parseId(ev.target.value); ev.target.classList.toggle('bad', !Number.isFinite(v)); t.src[i] = Number.isFinite(v) ? v : 0; refreshGen(gi); } }),
@@ -2202,7 +2211,8 @@ function dbcView() {
       h('h2', {}, 'Browse'),
       h('div', { class: 'toolbar' }, h('input', { placeholder: 'Search an ID, message or signal name…', style: 'width:320px', value: dbcSearch,
         oninput: (e) => { dbcSearch = e.target.value; const pos = e.target.selectionStart; renderTab(false); const el = $('#main input[placeholder^="Search an ID"]'); el.focus(); el.setSelectionRange(pos, pos); } })),
-      q ? (results.length ? results : h('p', { class: 'muted' }, 'Nothing matches.')) : h('p', { class: 'muted', style: 'margin:0' }, 'Type to search.')) : null);
+      q ? (results.length ? results : h('p', { class: 'muted' }, 'Nothing matches.')) : h('p', { class: 'muted', style: 'margin:0' }, 'Type to search.')) : null,
+    dbcExportPanel());
 }
 
 // Order signals by where they sit in the frame (first byte, then highest bit).
@@ -2420,8 +2430,8 @@ function firmwareView() {
 // ===========================================================================
 // Custom route transforms: engine (mirror of xfApply in GenEngine.h)
 // ===========================================================================
-const XO = { SET_ID: 1, SET_LEN: 2, SET_FIELD: 3, COPY: 4, COND: 5, COUNTER: 6 };
-const XO_LABEL = { 1: 'Change the ID', 2: 'Change the length', 3: 'Set a field to a value', 4: 'Copy a field (scaled)', 5: 'Forward only if…', 6: 'Rolling counter' };
+const XO = { SET_ID: 1, SET_LEN: 2, SET_FIELD: 3, COPY: 4, COND: 5, COUNTER: 6, CHECKSUM: 7 };
+const XO_LABEL = { 1: 'Change the ID', 2: 'Change the length', 3: 'Set a field to a value', 4: 'Copy a field (scaled)', 5: 'Forward only if…', 6: 'Rolling counter', 7: 'Checksum / CRC' };
 const XC_LABEL = ['=', '≠', '<', '≤', '>', '≥', 'has all these bits', 'has any of these bits'];
 const XS_THIS_JS = 2;
 // Step options (GenEngine.h XF_*): missing source -> skip / write 0; catch short presses; write only masked bits.
@@ -2469,6 +2479,7 @@ function xfApplyJs(x, frame, cached, counters) {
         break;
       }
       case XO.COUNTER: genPutJs(data, o.dstStart, o.dstLen, o.dstOrder, (counters?.[i] ?? 0) % 2 ** o.dstLen); break;
+      case XO.CHECKSUM: genPutJs(data, o.dstStart, o.dstLen, o.dstOrder, ckComputeJs(o, data, len, id, ext)); break;
     }
   }
   return { keep: true, id, ext, len, data: data.slice(0, len) };
@@ -2524,7 +2535,12 @@ function xfIssues(m, xi) {
   if (!x.ops.length) w.push('no steps: frames pass unchanged');
   x.ops.forEach((o, i) => {
     const n = `step ${i + 1}`;
-    const usesDst = [XO.SET_FIELD, XO.COPY, XO.COUNTER].includes(o.kind), usesSrc = [XO.COPY, XO.COND].includes(o.kind);
+    const usesDst = [XO.SET_FIELD, XO.COPY, XO.COUNTER, XO.CHECKSUM].includes(o.kind), usesSrc = [XO.COPY, XO.COND].includes(o.kind);
+    if (o.kind === XO.CHECKSUM) {
+      ckIssues(o, n, e, w);
+      if (x.ops.slice(i + 1).some(z => [XO.SET_FIELD, XO.COPY, XO.COUNTER, XO.SET_LEN, XO.SET_ID].includes(z.kind) && !(z.kind === XO.SET_ID && !o.srcExt)))
+        w.push(`${n}: later steps change the frame after the checksum is worked out (put the checksum last)`);
+    }
     if (usesDst && !genFits(o.dstStart, o.dstLen, o.dstOrder, 8)) e.push(`${n}: field doesn’t fit in 8 bytes`);
     if (usesSrc && !genFits(o.srcStart, o.srcLen, o.srcOrder, 8)) e.push(`${n}: source field doesn’t fit in 8 bytes`);
     if (usesSrc && o.srcBus !== XS_THIS_JS && !(o.srcId >= 0 && o.srcId <= maxId(o.srcExt))) e.push(`${n}: bad source ID`);
@@ -2626,6 +2642,8 @@ function xfCard(m, x, xi) {
     else if (o.kind === XO.COND) body = [source(),
       h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Forward if'), h('span', {}, 'value '),
         sel(o, 'cmp', XC_LABEL.map((t, i) => [i, t])), num(o, 'value', 'id', { signed: true }), h('span', { class: 'muted' }, `(${isHex() ? 'hex' : 'dec'}, raw value)`))];
+    else if (o.kind === XO.CHECKSUM) body = [ckEditor(o, refresh, full),
+      h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Into field'), field(o, 'dst'))];
     else if (o.kind === XO.COUNTER) body = h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Field'), field(o, 'dst'),
       h('label', {}, 'add ', num(o, 'step'), ' per forwarded frame'));
     return h('div', { class: 'field-card', style: 'border-left-color:var(--accent)' },
@@ -2644,6 +2662,7 @@ function xfCard(m, x, xi) {
     if (k === XO.SET_LEN) st.value = 8;
     if (k === XO.COUNTER) { st.dstStart = 0; st.dstLen = 4; st.dstOrder = BO_INTEL; }
     if (k === XO.SET_ID) st.srcId = 0x700;
+    if (k === XO.CHECKSUM) Object.assign(st, { srcBus: CK.SUM, srcId: 0, srcExt: 0, srcStart: 0, srcLen: 6, dstStart: 56, dstLen: 8, dstOrder: BO_INTEL, staleMs: 0, step: 0 });
     x.ops.push(st); full();
   } }, h('option', { value: 0 }, x.ops.length >= maxOps ? `Max ${maxOps} steps` : '+ Add a step…'), Object.entries(XO_LABEL).map(([k, t]) => h('option', { value: k }, t)));
 
@@ -2789,6 +2808,7 @@ const HELP = [
 </ul>
 <h4>Merge bytes from another frame (formerly the Buttons tab)</h4>
 <p><b>+ Merge bytes from another frame</b> starts a transform that sets the length to 8 and copies whole bytes from another frame, reading 0 when that frame is stale. Add one copy step per byte (up to 5). This is how steering wheel buttons are merged into the ABS frame: wheel 0x178 bytes 7 and 8 → ABS 0x2B2 bytes 4 and 5, with a 250 ms stale time. One difference from the old Buttons map: until the source frame has been seen once since start-up, the copied bytes read 0 instead of passing the original bytes through.</p>
+<p><b>Checksum / CRC</b> steps (firmware 2.8+) work out a checksum of the frame as it is at that step: see <i>Checksums and CRCs</i> under the Generated frames tab.</p>
 <p><b>Try it</b> runs a test frame through the transform with exactly the firmware’s math and shows what would be sent, or which step drops it and why.</p>
 <p>Notes: steps that read “this frame” see it as received, before any step. A rolling counter on a rate-limited route skips the values the limiter holds back. Deleting or reordering transforms renumbers the routes that use them.</p>` },
 
@@ -2811,7 +2831,15 @@ const HELP = [
 <li><b>Other-bus copy:</b> while a frame is <b>On</b>, a frame with the same ID arriving on the other bus (the ECU’s own copy) is dropped, and checked against the isolator’s on the Status tab. Turn a frame off to pass the ECU’s copy through instead.</li>
 </ul>
 <p><b>Picking bits:</b> click “Pick bits in the grid”, then the first and last bit in the frame grid. <b>Use a saved signal / DBC signal</b> fills a source from the bit analyzer or a DBC file. <b>Work it out from units…</b> turns “physical = raw × scale + offset” on both sides into the factor and offset.</p>
-<p>The <b>preview</b> uses exactly the firmware’s math, so the bytes it shows are the bytes the board sends for those test values.</p>` },
+<p>The <b>preview</b> uses exactly the firmware’s math, so the bytes it shows are the bytes the board sends for those test values.</p>
+<h4>Checksums and CRCs (firmware 2.8+)</h4>
+<p>Many factory modules ignore a frame unless a checksum byte (or nibble) matches the data, often together with a rolling counter. A <b>Checksum / CRC</b> field (generated frames) or step (transforms) works one out and writes it into its field:</p>
+<ul>
+<li><b>Algorithm:</b> sum of bytes, sum of nibbles, XOR of bytes, XOR of nibbles, or CRC-8 with your polynomial, initial value and final XOR. <b>Presets</b> fill in common ones: plain sum, two’s-complement sum (all bytes add up to 0), XOR, 4-bit nibble sum, “sum + ID + length” (Toyota style), CRC-8 SAE J1850 (poly 1D) and AUTOSAR (poly 2F).</li>
+<li><b>Over bytes … to …:</b> which data bytes are covered. The checksum’s own bits count as 0, so it can sit inside that range. <b>+ ID and length</b> also covers the frame ID (2 bytes, or 4 for 29-bit) and the data length, before the data.</li>
+<li><b>+ constant</b> (XOR for the XOR kinds) and <b>then</b> as is / inverted / two’s complement finish it off; the low bits that fit the field (1–8) are written.</li>
+</ul>
+<p>In a generated frame the checksum is always worked out last, over the finished bytes (including counters). In a transform it covers the frame as it is at that step, so put it last; the page warns if a later step changes the data.</p>` },
 
   { id: 'settings', group: 'Tabs', title: 'Bus settings tab', html: `
 <ul>
@@ -2884,6 +2912,15 @@ const HELP = [
 <li>Set which bus each file <b>describes</b>, so an ID used differently on the two buses isn’t mixed up. When two files define the same ID, the one higher in the list wins.</li>
 <li>Files are kept in this browser only; nothing goes to the board.</li>
 <li><b>Browse</b> searches IDs, message names and signal names.</li>
+</ul>
+<h4>Export a DBC of what the isolator sends</h4>
+<p>Writes a <code>.dbc</code> file of the frames the isolator puts on one bus (choose Bus B for the ECU side): routed frames, after any ID change, and generated frames, with the signals inside them. Load it into your ECU software to set up its receive messages instead of typing bit positions by hand.</p>
+<ul>
+<li>Signals come from your loaded DBC files (for the bus each frame comes from) and your saved analyzer signals.</li>
+<li>They follow the frames through transforms: bytes merged from another frame keep their own signal names in their new place (for example the wheel’s button bits inside the ABS frame), and signals overwritten by a step are left out.</li>
+<li>Copies with scaling get the matching scaling: if the source is <code>raw × F + O</code> and the copy is <code>× f + o</code>, the new signal is <code>raw × F/f + (O − o·F/f)</code>, so it still reads in the original units.</li>
+<li>Counters and checksums are listed by name. A copied field with no DBC name is called after its source (e.g. <code>ID_178_byte6</code>).</li>
+<li>Where two signals cover the same bits, the one written later wins, as it does in the frame. ID ranges are left out (a DBC lists single IDs). It describes the settings in this page, including unsent edits.</li>
 </ul>` },
 
   { id: 'bits', group: 'Reference', title: 'Bit numbering (Motorola and Intel)', html: `
@@ -2905,6 +2942,10 @@ const HELP = [
 <p>Without firmware 2.6: Sniffer → <b>monitor</b> on the ID, press the button a few times, and look for the bit analyzer cells that light up.</p>
 <h4>Test settings at your desk with a recording from the car</h4>
 <ol><li>In the car: Record &amp; replay → record everything on A RX (and B RX) for a few minutes of driving → Save as candump log.</li><li>At the desk, with only the ECU or the dash connected: load the log, set A RX to <i>Feed in as received on Bus A</i>, Start replay.</li><li>Watch the result with the frame monitor (B TX) or the Graph tab, change routes or transforms, Send, and replay again.</li></ol>
+<h4>Make a module accept a frame with a checksum</h4>
+<ol><li>Capture the module’s frames in the monitor and find the counter (the analyzer’s <i>Worth a look</i> spots it) and the byte that changes with everything else.</li><li>Try the presets in a transform’s <b>Checksum / CRC</b> step with <i>Try it</i>, using captured frames, until the result matches the real byte.</li><li>Put the step (after any counter) on the route, or add a checksum field to the generated frame. Send, check the module accepts it, Save.</li></ol>
+<h4>Set up the ECU to receive what the isolator sends</h4>
+<p>DBC files → <b>Export a DBC of what the isolator sends</b> → Bus B → Download, then import it in the ECU software. Load the DBC files for your chassis devices first so their signals are named.</p>
 <h4>Find out what went wrong on a drive</h4>
 <p>After the drive, connect (without power-cycling the isolator) and look at Status → <b>Event history</b>: bus state changes and error bursts are listed with the time they happened.</p>
 <h4>Move a frame to another ID, or clear a bit</h4>
@@ -3061,6 +3102,270 @@ function highlightText(root, q) {
     frag.append(t.slice(last));
     n.parentNode.replaceChild(frag, n);
   }
+}
+
+// ===========================================================================
+// Checksums (mirror of ckCompute in GenEngine.h): generated-frame fields and transform steps
+// ===========================================================================
+// Same fields in both: srcBus = algorithm, srcStart/srcLen = first/last byte covered,
+// srcExt = also cover ID + length, srcId = CRC poly | init << 8 | final XOR << 16,
+// staleMs = constant (added, or XORed for the XOR kinds), step = 0 as is / 1 invert / 2 two's complement.
+const GS_CHECKSUM = 3;
+const CK = { SUM: 0, SUM_NIB: 1, XOR: 2, XOR_NIB: 3, CRC8: 4 };
+const CK_ALGOS = [[CK.SUM, 'sum of bytes'], [CK.SUM_NIB, 'sum of nibbles'], [CK.XOR, 'XOR of bytes'], [CK.XOR_NIB, 'XOR of nibbles'], [CK.CRC8, 'CRC-8']];
+const CK_FINAL = [[0, 'as is'], [1, 'inverted (~x)'], [2, 'two’s complement (−x)']];
+const crcPack = (poly, init, xo) => (poly & 255) | (init & 255) << 8 | (xo & 255) << 16;
+const CK_PRESETS = [
+  { name: 'Sum of bytes', set: { srcBus: CK.SUM, step: 0, srcExt: 0, staleMs: 0, dstLen: 8 } },
+  { name: 'Sum of bytes, two’s complement (all bytes add up to 0)', set: { srcBus: CK.SUM, step: 2, srcExt: 0, staleMs: 0, dstLen: 8 } },
+  { name: 'XOR of bytes', set: { srcBus: CK.XOR, step: 0, srcExt: 0, staleMs: 0, dstLen: 8 } },
+  { name: 'Sum of nibbles, 4-bit', set: { srcBus: CK.SUM_NIB, step: 0, srcExt: 0, staleMs: 0, dstLen: 4 } },
+  { name: 'Sum of bytes + ID + length (Toyota style)', set: { srcBus: CK.SUM, step: 0, srcExt: 1, staleMs: 0, dstLen: 8 } },
+  { name: 'CRC-8 SAE J1850 (poly 1D, init FF, XOR FF)', set: { srcBus: CK.CRC8, srcId: crcPack(0x1D, 0xFF, 0xFF), step: 0, srcExt: 0, staleMs: 0, dstLen: 8 } },
+  { name: 'CRC-8 AUTOSAR (poly 2F, init FF, XOR FF)', set: { srcBus: CK.CRC8, srcId: crcPack(0x2F, 0xFF, 0xFF), step: 0, srcExt: 0, staleMs: 0, dstLen: 8 } },
+  { name: 'CRC-8 (poly 07, init 00, XOR 00)', set: { srcBus: CK.CRC8, srcId: crcPack(0x07, 0, 0), step: 0, srcExt: 0, staleMs: 0, dstLen: 8 } },
+];
+
+function ckComputeJs(s, data, len, id, ext) {
+  const b = [...data, 0, 0, 0, 0, 0, 0, 0, 0].slice(0, 8);
+  genPutJs(b, s.dstStart, s.dstLen, s.dstOrder, 0);
+  const seq = [];
+  if (s.srcExt) { if (ext) seq.push((id >>> 24) & 255, (id >>> 16) & 255); seq.push((id >>> 8) & 255, id & 255, len & 255); }
+  for (let i = s.srcStart; i <= s.srcLen && i < 8; i++) seq.push(i < len ? b[i] : 0);
+  let r = 0;
+  if (s.srcBus === CK.SUM) for (const x of seq) r += x;
+  else if (s.srcBus === CK.SUM_NIB) for (const x of seq) r += (x >> 4) + (x & 15);
+  else if (s.srcBus === CK.XOR) for (const x of seq) r ^= x;
+  else if (s.srcBus === CK.XOR_NIB) for (const x of seq) r ^= (x >> 4) ^ (x & 15);
+  else if (s.srcBus === CK.CRC8) {
+    const poly = s.srcId & 255, xo = (s.srcId >>> 16) & 255;
+    let c = (s.srcId >>> 8) & 255;
+    for (const x of seq) { c ^= x; for (let k = 0; k < 8; k++) c = c & 0x80 ? ((c << 1) ^ poly) & 255 : (c << 1) & 255; }
+    r = c ^ xo;
+  }
+  r = (s.srcBus === CK.XOR || s.srcBus === CK.XOR_NIB) ? (r ^ s.staleMs) >>> 0 : (r + s.staleMs) >>> 0;
+  if (s.step === 1) r = ~r >>> 0; else if (s.step === 2) r = (0 - r) >>> 0;
+  return r & (2 ** s.dstLen - 1);
+}
+
+// Problems with a checksum's own settings (field placement is checked by the caller).
+function ckIssues(s, n, e, w) {
+  if (!(s.srcStart >= 0 && s.srcLen <= 7 && s.srcStart <= s.srcLen)) e.push(`${n}: covered bytes must be in order, 0-7`);
+  if (!(s.dstLen >= 1 && s.dstLen <= 8)) e.push(`${n}: a checksum field is 1-8 bits`);
+  if (!(s.staleMs >= 0 && s.staleMs <= 255)) e.push(`${n}: constant 00-FF`);
+  if (!(s.srcId >= 0 && s.srcId <= 0xFFFFFF)) e.push(`${n}: CRC settings 00-FF each`);
+  if (state.hello && !has('ck')) e.push(`${n}: checksums need isolator firmware 2.8 or newer (More… → Update firmware)`);
+  if ((s.srcBus === CK.SUM_NIB || s.srcBus === CK.XOR_NIB) && s.dstLen > 4) w.push(`${n}: a nibble checksum usually goes in a 4-bit field`);
+}
+
+// Editor shared by generated-frame fields and transform steps.
+// onChange: re-run previews only; onFull: re-render the card.
+function ckEditor(s, onChange, onFull) {
+  const set = (k, v) => { s[k] = v; onChange(); };
+  const hexIn = (get, put, title) => h('input', { class: 'byte mono', title, value: get().toString(16).toUpperCase().padStart(2, '0'), oninput: (ev) => {
+    const v = parseHex(ev.target.value); const ok = Number.isFinite(v) && v <= 255; ev.target.classList.toggle('bad', !ok); if (ok) { put(v); onChange(); } } });
+  const byteSel = (k) => h('select', { onchange: (ev) => set(k, +ev.target.value) }, [0, 1, 2, 3, 4, 5, 6, 7].map(b => h('option', { value: b, selected: s[k] === b }, 'byte ' + b)));
+  const crc = s.srcBus === CK.CRC8;
+  const isXor = s.srcBus === CK.XOR || s.srcBus === CK.XOR_NIB;
+  return [
+    h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Checksum'),
+      h('select', { onchange: (ev) => { const p = CK_PRESETS[+ev.target.value]; if (p) { Object.assign(s, p.set); onFull(); } } },
+        h('option', { value: '' }, 'Preset…'), CK_PRESETS.map((p, i) => h('option', { value: i }, p.name))),
+      h('select', { title: 'Algorithm', onchange: (ev) => { s.srcBus = +ev.target.value; onFull(); } }, CK_ALGOS.map(([v, t]) => h('option', { value: v, selected: s.srcBus === v }, t))),
+      h('label', {}, 'over ', byteSel('srcStart')), h('label', {}, 'to ', byteSel('srcLen')),
+      h('label', { title: 'Cover the ID (2 bytes, or 4 for 29-bit) and the data length too, before the data' },
+        h('input', { type: 'checkbox', checked: s.srcExt, onchange: (ev) => set('srcExt', ev.target.checked ? 1 : 0) }), ' + ID and length')),
+    h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, ''),
+      crc ? [h('label', {}, 'poly ', hexIn(() => s.srcId & 255, v => { s.srcId = (s.srcId & ~255) | v; }, 'Polynomial (hex)')),
+             h('label', {}, 'init ', hexIn(() => (s.srcId >>> 8) & 255, v => { s.srcId = (s.srcId & ~0xFF00) | v << 8; }, 'Initial value (hex)')),
+             h('label', {}, 'final XOR ', hexIn(() => (s.srcId >>> 16) & 255, v => { s.srcId = (s.srcId & 0xFFFF) | v << 16; }, 'XOR applied at the end (hex)'))] : null,
+      h('label', {}, isXor ? 'XOR ' : '+ ', hexIn(() => s.staleMs, v => { s.staleMs = v; }, 'Constant (hex)')),
+      h('label', {}, 'then ', h('select', { onchange: (ev) => set('step', +ev.target.value) }, CK_FINAL.map(([v, t]) => h('option', { value: v, selected: s.step === v }, t)))),
+      h('span', { class: 'muted' }, 'the checksum’s own bits count as 0')),
+  ];
+}
+
+// ===========================================================================
+// DBC export: what the isolator sends on a bus, with signals mapped through
+// routes, transforms and generated frames
+// ===========================================================================
+const dbcExport = { bus: 1, useDbc: 1, useSaved: 1 };
+
+const dbcIdent = (s) => { let t = String(s || '').replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''); if (!t || /^\d/.test(t)) t = 'S_' + t; return t.slice(0, 64); };
+// Every signal known for (bus, id, ext): from enabled DBC files and saved analyzer signals.
+function knownSignals(bus, id, ext) {
+  const out = [];
+  if (dbcExport.useDbc) {
+    const msg = dbcMsg(bus, id, ext);
+    if (msg) for (const s of msg.signals) if (s.mux === null) out.push({ name: s.name, start: s.start, len: s.len, order: s.order, signed: s.signed, factor: s.factor, offset: s.offset, unit: s.unit, values: s.values, comment: s.comment, valType: s.valType });
+  }
+  if (dbcExport.useSaved) for (const s of sigStore[`${ext}:${id}`] || []) if (!out.some(o => o.name === s.name)) out.push({ ...s, values: null, comment: 'Saved in the bit analyzer' });
+  return out;
+}
+// The ordered bit list of a field, as DBC signal positions (Motorola: MSB first; Intel: LSB first).
+const fieldBits = (start, len, order) => genPositions(start, len, order === 'intel' || order === BO_INTEL ? BO_INTEL : BO_MOT);
+// Map a signal that lies inside a copied source field to the destination field (bit-for-bit copy).
+function mapSignal(sig, srcF, dstF) {
+  const sOrd = sig.order === 'intel' ? BO_INTEL : BO_MOT;
+  const sb = fieldBits(sig.start, sig.len, sOrd);
+  const from = fieldBits(srcF.start, srcF.len, srcF.order), to = fieldBits(dstF.start, dstF.len, dstF.order);
+  // significance of each source-field bit: Intel lists LSB first, Motorola MSB first
+  const sig2idx = (list, ord) => { const m = new Map(); list.forEach((p, i) => m.set(p, ord === BO_INTEL ? i : list.length - 1 - i)); return m; };
+  const fromSig = sig2idx(from, srcF.order), toPos = new Map(); to.forEach((p, i) => toPos.set(dstF.order === BO_INTEL ? i : to.length - 1 - i, p));
+  if (!sb.every(p => fromSig.has(p))) return null;
+  if (dstF.mask !== undefined && !sb.every(p => (dstF.mask >>> fromSig.get(p)) & 1)) return null;
+  const mapped = sb.map(p => toPos.get(fromSig.get(p)));
+  if (mapped.some(p => p === undefined)) return null;
+  // the mapped bits must again form one field in the signal's own byte order
+  for (const ord of [sOrd, sOrd === BO_INTEL ? BO_MOT : BO_INTEL]) {
+    const start = mapped[0];
+    const cand = fieldBits(start, sig.len, ord);
+    if (cand.length === mapped.length && cand.every((p, i) => p === mapped[i])) return { ...sig, start, order: ord === BO_INTEL ? 'intel' : 'motorola' };
+  }
+  return null;
+}
+const sigRange = (len, signed, factor, offset) => {
+  const lo = signed ? -(2 ** (len - 1)) : 0, hi = signed ? 2 ** (len - 1) - 1 : 2 ** len - 1;
+  const a = lo * factor + offset, b = hi * factor + offset;
+  return [Math.min(a, b), Math.max(a, b)];
+};
+
+// Build the list of messages the isolator sends on 'bus'.
+function dbcExportModel(m, bus) {
+  const base = state.hello?.xfCustom ?? 2;
+  const fromBus = bus ^ 1, dirBit = bus === 1 ? 1 : 2;
+  const msgs = [], skipped = [];
+  const add = (msg) => {
+    const k = msg.ext + ':' + msg.id;
+    const old = msgs.find(x => x.ext + ':' + x.id === k);
+    if (old) { old.comment += ` Also: ${msg.comment}`; return; }
+    msgs.push(msg);
+  };
+  // Generated frames first: while one is on, the isolator drops the routed copy of that ID.
+  for (const g of m.gens) {
+    if (g.bus !== bus || !g.on) continue;
+    const sigs = [];
+    for (const f of [...g.sig.filter(f => f.kind !== GS_CHECKSUM), ...g.sig.filter(f => f.kind === GS_CHECKSUM)]) {   // the firmware writes checksums last
+      if (f.kind === GS_SOURCE) sigs.push(...copySignals(f, f.srcBus, f.srcId, f.srcExt));
+      else if (f.kind === GS_COUNTER) sigs.push({ name: 'Counter', start: f.dstStart, len: f.dstLen, order: f.dstOrder === BO_INTEL ? 'intel' : 'motorola', signed: 0, factor: 1, offset: 0, unit: '', comment: `Rolling counter (+${f.step} per frame).` });
+      else if (f.kind === GS_CHECKSUM) sigs.push({ name: 'Checksum', start: f.dstStart, len: f.dstLen, order: f.dstOrder === BO_INTEL ? 'intel' : 'motorola', signed: 0, factor: 1, offset: 0, unit: '', comment: `${CK_ALGOS.find(a => a[0] === f.srcBus)?.[1] || 'checksum'}, bytes ${f.srcStart}-${f.srcLen}, worked out by the isolator.` });
+    }
+    add({ id: g.id, ext: g.ext, len: g.len, name: dbcIdent(g.name) || `Gen_${hex(g.id, g.ext)}`, comment: `Generated by the isolator every ${g.period} ms (“${g.name}”).`, sigs });
+  }
+  for (const r of m.routes) {
+    if (!(r.dir & dirBit) || r.action === 1) continue;
+    if (r.last && r.last !== r.first) { skipped.push(`range ${fmtId(r.first, r.ext)}–${fmtId(r.last, r.ext)}`); continue; }
+    const srcMsg = dbcMsg(fromBus, r.first, r.ext);
+    let id = r.first, ext = r.ext, len = srcMsg?.dlc ?? 8;
+    let sigs = knownSignals(fromBus, r.first, r.ext).map(s => ({ ...s, comment: s.comment }));
+    let note = r.note ? `Route “${r.note}”.` : 'Routed by the isolator.';
+    const x = r.xf >= base ? m.xforms[r.xf - base] : null;
+    if (r.xf && !x) note += ' Built-in transform (old Buttons merge): merged bytes not described.';
+    if (x) {
+      note += ` Transform “${x.name}”.`;
+      for (const o of x.ops) {
+        if (o.kind === XO.SET_ID) { id = o.srcId; ext = o.srcExt; }
+        else if (o.kind === XO.SET_LEN) len = o.value;
+        else if (o.kind === XO.SET_FIELD || o.kind === XO.COPY || o.kind === XO.COUNTER || o.kind === XO.CHECKSUM) {
+          // anything previously described there is overwritten
+          const bits = fieldBits(o.dstStart, o.dstLen, o.dstOrder);
+          const masked = o.kind === XO.COPY && (o.flags & XF_MASK);
+          const dst = new Set(bits.filter((p, i) => !masked || ((o.value >>> (o.dstOrder === BO_INTEL ? i : bits.length - 1 - i)) & 1)));
+          sigs = sigs.filter(s => !fieldBits(s.start, s.len, s.order === 'intel' ? BO_INTEL : BO_MOT).some(p => dst.has(p)));
+          if (o.kind === XO.COUNTER) sigs.push({ name: `Counter_${x.name}`, start: o.dstStart, len: o.dstLen, order: o.dstOrder === BO_INTEL ? 'intel' : 'motorola', signed: 0, factor: 1, offset: 0, unit: '', comment: `Rolling counter (+${o.step} per frame) added by the isolator.` });
+          if (o.kind === XO.CHECKSUM) sigs.push({ name: `Checksum_${x.name}`, start: o.dstStart, len: o.dstLen, order: o.dstOrder === BO_INTEL ? 'intel' : 'motorola', signed: 0, factor: 1, offset: 0, unit: '', comment: `${CK_ALGOS.find(a => a[0] === o.srcBus)?.[1] || 'checksum'}, bytes ${o.srcStart}-${o.srcLen}, added by the isolator.` });
+          if (o.kind === XO.COPY) sigs.push(...copySignals(o, o.srcBus === XS_THIS_JS ? fromBus : o.srcBus, o.srcBus === XS_THIS_JS ? r.first : o.srcId, o.srcBus === XS_THIS_JS ? r.ext : o.srcExt));
+        }
+      }
+    }
+    const nm = srcMsg?.name || `ID_${hex(r.first, r.ext)}`;
+    add({ id, ext, len, name: id === r.first && ext === r.ext ? nm : `${nm}_as_${hex(id, ext)}`, comment: note, sigs });
+  }
+  return { msgs, skipped };
+}
+
+// Signals created by a copy (transform COPY step or generated-frame source field).
+function copySignals(o, srcBus, srcId, srcExt) {
+  const srcF = { start: o.srcStart, len: o.srcLen, order: o.srcOrder };
+  const dstF = { start: o.dstStart, len: o.dstLen, order: o.dstOrder, mask: o.flags & XF_MASK ? o.value >>> 0 : undefined };
+  const srcName = dbcMsg(srcBus, srcId, srcExt)?.name || `ID_${hex(srcId, srcExt)}`;
+  const known = knownSignals(srcBus, srcId, srcExt);
+  const identity = o.factor === 1 && o.offset === 0 && o.srcLen === o.dstLen && !o.srcSigned === !o.dstSigned;
+  const out = [];
+  if (identity) for (const s of known) { const mm = mapSignal(s, srcF, dstF); if (mm) out.push({ ...mm, name: `${srcName}_${s.name}`, comment: `Copied from ${fmtId(srcId, srcExt)} ${srcName}.${s.name} by the isolator.` }); }
+  // the copied field itself, unless it is exactly one known signal already listed
+  // the copied field is exactly a known signal: same bits (and, beyond one byte, the same byte order)
+  const fb = fieldBits(o.srcStart, o.srcLen, o.srcOrder), fset = [...fb].sort((a, b) => a - b).join();
+  const exact = known.find(s => s.len === o.srcLen && [...fieldBits(s.start, s.len, s.order === 'intel' ? BO_INTEL : BO_MOT)].sort((a, b) => a - b).join() === fset &&
+                                (s.len <= 8 && Math.floor(fb[0] / 8) === Math.floor(fb[fb.length - 1] / 8) || (s.order === 'intel' ? BO_INTEL : BO_MOT) === o.srcOrder));
+  if (!identity || !out.length || exact) {
+    // physical units of the destination: src phys = raw*F + O, dst = raw*f + o  =>  phys = dst*(F/f) + (O - o*F/f)
+    const F = exact ? exact.factor : 1, O = exact ? exact.offset : 0;
+    if (!(identity && exact && out.some(x => x.name === `${srcName}_${exact.name}`))) {
+      const f = o.factor || 1;
+      const wholeByte = o.srcLen === 8 && fb.every(p => Math.floor(p / 8) === Math.floor(fb[0] / 8));
+      out.push({ name: exact ? `${srcName}_${exact.name}` : wholeByte ? `${srcName}_byte${Math.floor(fb[0] / 8)}` : `${srcName}_bits_${o.srcStart}_${o.srcLen}`, start: o.dstStart, len: o.dstLen, order: o.dstOrder === BO_INTEL ? 'intel' : 'motorola',
+                 signed: o.dstSigned ? 1 : 0, factor: +(F / f).toPrecision(9), offset: +(O - o.offset * F / f).toPrecision(9), unit: exact?.unit || '', values: exact?.values || null,
+                 comment: `From ${fmtId(srcId, srcExt)} ${srcName} bits ${o.srcStart}|${o.srcLen}` + (o.factor !== 1 || o.offset !== 0 ? `, rescaled (× ${o.factor} + ${o.offset})` : '') + ' by the isolator.' });
+    }
+  }
+  return out;
+}
+
+function dbcExportText(m, bus) {
+  const { msgs } = dbcExportModel(m, bus);
+  const q = (s) => String(s).replace(/"/g, "'");
+  const L = ['VERSION ""', '', 'NS_ :', '', 'BS_:', '', 'BU_: Isolator', ''];
+  const cm = [], val = [];
+  for (const msg of msgs) {
+    const rawId = msg.ext ? (msg.id | 0x80000000) >>> 0 : msg.id;
+    const mname = dbcIdent(msg.name);
+    L.push(`BO_ ${rawId} ${mname}: ${msg.len} Isolator`);
+    // Where two signals cover the same bits, the one written later wins (as in the frame).
+    const owner = new Map(), keep = [];
+    msg.sigs.forEach((sg, i) => {
+      const bits = fieldBits(sg.start, sg.len, sg.order === 'intel' ? BO_INTEL : BO_MOT);
+      if (bits.some(p => p < 0 || p >= msg.len * 8)) return;              // outside the frame
+      for (const p of bits) if (owner.has(p)) keep[owner.get(p)] = false;
+      bits.forEach(p => owner.set(p, i)); keep[i] = true;
+    });
+    msg.sigs = msg.sigs.filter((_, i) => keep[i]);
+    const used = new Set();
+    for (const s of msg.sigs) {
+      let n = dbcIdent(s.name), k = 2; while (used.has(n)) n = dbcIdent(s.name) + '_' + k++;
+      used.add(n);
+      const [lo, hi] = sigRange(s.len, s.signed, s.factor, s.offset);
+      L.push(` SG_ ${n} : ${s.start}|${s.len}@${s.order === 'intel' ? 1 : 0}${s.signed ? '-' : '+'} (${+s.factor},${+s.offset}) [${+lo.toPrecision(9)}|${+hi.toPrecision(9)}] "${q(s.unit || '')}" Vector__XXX`);
+      if (s.comment) cm.push(`CM_ SG_ ${rawId} ${n} "${q(s.comment)}";`);
+      if (s.values && Object.keys(s.values).length) val.push(`VAL_ ${rawId} ${n} ${Object.entries(s.values).map(([v, t]) => `${v} "${q(t)}"`).join(' ')} ;`);
+    }
+    L.push('');
+    cm.push(`CM_ BO_ ${rawId} "${q(msg.comment)}";`);
+  }
+  return [...L, `CM_ "Frames the CAN isolator sends on Bus ${bus ? 'B (standalone ECU side)' : 'A (chassis side)'}. Exported ${new Date().toISOString().slice(0, 10)}.";`, ...cm, ...val, ''].join('\n');
+}
+
+function dbcExportPanel() {
+  const m = state.edit;
+  if (!m) return null;
+  const { msgs, skipped } = dbcExportModel(m, dbcExport.bus);
+  const nSig = msgs.reduce((a, x) => a + x.sigs.length, 0);
+  const chk = (k, label) => h('label', {}, h('input', { type: 'checkbox', checked: dbcExport[k], onchange: (e) => { dbcExport[k] = e.target.checked ? 1 : 0; renderTab(false); } }), ' ' + label);
+  return h('div', { class: 'panel' },
+    h('h2', {}, 'Export a DBC of what the isolator sends'),
+    h('p', { class: 'hint' }, 'Writes a .dbc file describing the frames the isolator puts on a bus: routed frames (after any ID change), generated frames, and the signals inside them. ',
+      'Signals come from your DBC files and saved analyzer signals, and follow the frames through transforms: bytes merged from another frame (such as steering wheel buttons) show up with their own names in their new place, rescaled copies get their new scaling, and counters and checksums are listed. Load it into your ECU software to set up its receive messages. It describes the settings in this page, including unsent edits.'),
+    h('div', { class: 'toolbar' },
+      h('label', {}, 'Frames sent on ', h('select', { onchange: (e) => { dbcExport.bus = +e.target.value; renderTab(false); } },
+        h('option', { value: 1, selected: dbcExport.bus === 1 }, 'Bus B (to the ECU)'), h('option', { value: 0, selected: dbcExport.bus === 0 }, 'Bus A (to the chassis)'))),
+      chk('useDbc', 'signals from DBC files'), chk('useSaved', 'saved analyzer signals')),
+    h('div', { class: 'toolbar', style: 'margin:0' },
+      h('button', { class: 'primary', disabled: !msgs.length, onclick: () => downloadText(dbcExportText(m, dbcExport.bus), `isolator-bus${dbcExport.bus ? 'B' : 'A'}-${stamp().slice(0, 10)}.dbc`) }, 'Download .dbc'),
+      h('span', { class: 'muted' }, `${msgs.length} messages, ${nSig} signals` + (skipped.length ? ` · ${skipped.length} ID range(s) left out (a DBC lists single IDs)` : ''))),
+    msgs.length ? h('details', { style: 'margin-top:10px' }, h('summary', {}, 'What’s in it'),
+      h('table', { style: 'margin-top:6px' }, h('thead', {}, h('tr', {}, h('th', {}, 'ID'), h('th', {}, 'Message'), h('th', { class: 'num' }, 'Len'), h('th', {}, 'Signals'))),
+        h('tbody', {}, msgs.map(x => h('tr', {}, h('td', { class: 'mono' }, fmtId(x.id, x.ext)), h('td', {}, dbcIdent(x.name)), h('td', { class: 'num' }, x.len),
+          h('td', { class: 'muted', style: 'font-size:12.5px' }, x.sigs.map(s => s.name).join(', ') || '—')))))) : null);
 }
 
 // ===========================================================================

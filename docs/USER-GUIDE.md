@@ -111,6 +111,8 @@ A transform rewrites the frames a route forwards. It is a list of up to 6 steps 
 
 **+ Merge bytes from another frame** starts a transform that sets the length to 8 and copies whole bytes from another frame, reading 0 when that frame is stale. Add one copy step per byte (up to 5). This is how steering wheel buttons are merged into the ABS frame: wheel 0x178 bytes 7 and 8 → ABS 0x2B2 bytes 4 and 5, with a 250 ms stale time. One difference from the old Buttons map: until the source frame has been seen once since start-up, the copied bytes read 0 instead of passing the original bytes through.
 
+**Checksum / CRC** steps (firmware 2.8+) work out a checksum of the frame as it is at that step: see *Checksums and CRCs* under the Generated frames tab.
+
 **Try it** runs a test frame through the transform with exactly the firmware’s math and shows what would be sent, or which step drops it and why.
 
 Notes: steps that read “this frame” see it as received, before any step. A rolling counter on a rate-limited route skips the values the limiter holds back. Deleting or reordering transforms renumbers the routes that use them.
@@ -141,6 +143,16 @@ Frames the isolator builds and sends on a timer: up to 8, each with an ID, bus, 
 **Picking bits:** click “Pick bits in the grid”, then the first and last bit in the frame grid. **Use a saved signal / DBC signal** fills a source from the bit analyzer or a DBC file. **Work it out from units…** turns “physical = raw × scale + offset” on both sides into the factor and offset.
 
 The **preview** uses exactly the firmware’s math, so the bytes it shows are the bytes the board sends for those test values.
+
+### Checksums and CRCs (firmware 2.8+)
+
+Many factory modules ignore a frame unless a checksum byte (or nibble) matches the data, often together with a rolling counter. A **Checksum / CRC** field (generated frames) or step (transforms) works one out and writes it into its field:
+
+- **Algorithm:** sum of bytes, sum of nibbles, XOR of bytes, XOR of nibbles, or CRC-8 with your polynomial, initial value and final XOR. **Presets** fill in common ones: plain sum, two’s-complement sum (all bytes add up to 0), XOR, 4-bit nibble sum, “sum + ID + length” (Toyota style), CRC-8 SAE J1850 (poly 1D) and AUTOSAR (poly 2F).
+- **Over bytes … to …:** which data bytes are covered. The checksum’s own bits count as 0, so it can sit inside that range. **+ ID and length** also covers the frame ID (2 bytes, or 4 for 29-bit) and the data length, before the data.
+- **+ constant** (XOR for the XOR kinds) and **then** as is / inverted / two’s complement finish it off; the low bits that fit the field (1–8) are written.
+
+In a generated frame the checksum is always worked out last, over the finished bytes (including counters). In a transform it covers the frame as it is at that step, so put it last; the page warns if a later step changes the data.
 
 
 ## Bus settings tab
@@ -239,6 +251,16 @@ Load CAN database files (`.dbc`), such as your ECU maker’s files or your steer
 - Files are kept in this browser only; nothing goes to the board.
 - **Browse** searches IDs, message names and signal names.
 
+### Export a DBC of what the isolator sends
+
+Writes a `.dbc` file of the frames the isolator puts on one bus (choose Bus B for the ECU side): routed frames, after any ID change, and generated frames, with the signals inside them. Load it into your ECU software to set up its receive messages instead of typing bit positions by hand.
+
+- Signals come from your loaded DBC files (for the bus each frame comes from) and your saved analyzer signals.
+- They follow the frames through transforms: bytes merged from another frame keep their own signal names in their new place (for example the wheel’s button bits inside the ABS frame), and signals overwritten by a step are left out.
+- Copies with scaling get the matching scaling: if the source is `raw × F + O` and the copy is `× f + o`, the new signal is `raw × F/f + (O − o·F/f)`, so it still reads in the original units.
+- Counters and checksums are listed by name. A copied field with no DBC name is called after its source (e.g. `ID_178_byte6`).
+- Where two signals cover the same bits, the one written later wins, as it does in the frame. ID ranges are left out (a DBC lists single IDs). It describes the settings in this page, including unsent edits.
+
 
 ## How-to recipes
 
@@ -265,6 +287,16 @@ Without firmware 2.6: Sniffer → **monitor** on the ID, press the button a few 
 1. In the car: Record & replay → record everything on A RX (and B RX) for a few minutes of driving → Save as candump log.
 2. At the desk, with only the ECU or the dash connected: load the log, set A RX to *Feed in as received on Bus A*, Start replay.
 3. Watch the result with the frame monitor (B TX) or the Graph tab, change routes or transforms, Send, and replay again.
+
+### Make a module accept a frame with a checksum
+
+1. Capture the module’s frames in the monitor and find the counter (the analyzer’s *Worth a look* spots it) and the byte that changes with everything else.
+2. Try the presets in a transform’s **Checksum / CRC** step with *Try it*, using captured frames, until the result matches the real byte.
+3. Put the step (after any counter) on the route, or add a checksum field to the generated frame. Send, check the module accepts it, Save.
+
+### Set up the ECU to receive what the isolator sends
+
+DBC files → **Export a DBC of what the isolator sends** → Bus B → Download, then import it in the ECU software. Load the DBC files for your chassis devices first so their signals are named.
 
 ### Find out what went wrong on a drive
 

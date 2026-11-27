@@ -38,11 +38,12 @@ There's nothing to install.
   - Up to 8 transforms, 6 steps each.
   - Step types: change the ID or length; set a field to a value (also how you clear or set bits); copy a field from this frame or another frame, with scaling; forward only if a field matches (=, ≠, <, ≤, >, ≥, has all bits, has any bit); rolling counter.
   - Copy-step options (firmware 2.7+): write 0 when the source frame is missing or stale ("released"), copy only the bits in a mask, and catch short presses (a press shorter than one forwarded frame still shows once).
+  - **Checksum / CRC** steps (firmware 2.8+): sum, XOR, nibble or CRC-8 of the frame, with presets (two's-complement sum, Toyota-style, CRC-8 SAE J1850 / AUTOSAR).
   - **+ Merge bytes from another frame** starts a transform that copies whole bytes from another frame, for example steering wheel buttons into the ABS frame. This replaces the old Buttons tab.
   - "Try it" runs a test frame through the transform with the same math as the firmware, and shows which step drops it and why.
 - **Generated frames**: frames the isolator builds and sends on a timer.
   - Each has an ID, bus, period, length, constant bytes, and up to 4 fields.
-  - A field is copied from another frame (out = raw × factor + offset, rounded and clamped) or is a rolling counter.
+  - A field is copied from another frame (out = raw × factor + offset, rounded and clamped), a rolling counter, or a checksum / CRC worked out over the finished bytes (firmware 2.8+).
   - Bit numbering follows DBC (Motorola/Intel). "Pick bits in the grid" sets a field by clicking.
   - "Work it out from units…" computes the factor and offset.
   - The preview uses the same math as the firmware, so its bytes match what the board sends.
@@ -72,6 +73,7 @@ There's nothing to install.
   - It adds message names to the sniffer and monitor, and decoded signals with units and value names to the bit analyzer (click one to chart it).
   - It lets you pick a generated frame's source by signal name.
   - The Browse box searches IDs, messages and signals.
+  - **Export a DBC of what the isolator sends** on either bus: routed and generated frames with their signals followed through transforms (merged bytes keep their names, rescaled copies their units). Import it into the ECU software.
 
 **Bus A hardware filter** (Bus settings, on by default):
 - The CAN controller rejects chassis-side frames the isolator doesn't need, worked out from the route table, so they cost no CPU time.

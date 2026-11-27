@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Firmware 2.7.0" src="https://img.shields.io/badge/firmware-2.7.0-a3263f">
+  <img alt="Firmware 2.8.0" src="https://img.shields.io/badge/firmware-2.8.0-a3263f">
   <img alt="ESP32-C6" src="https://img.shields.io/badge/hardware-ESP32--C6%20CANipulator-2f6fd6">
   <img alt="Chrome or Edge" src="https://img.shields.io/badge/config%20tool-Chrome%20%7C%20Edge-d9822b">
   <img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-555">
@@ -41,7 +41,9 @@ The isolator splits the network in two:
 |---|---|
 | 🔀 **Routes** | First-match route table (up to 128 rows): pass or drop by ID or range, per direction, with rate limit, on-change + heartbeat, and a transform. Unrouted A → B traffic is dropped by default (a whitelist). |
 | 🛠 **Transforms** | Rewrite frames in flight: change the ID or length, set or clear bits, copy scaled or masked fields from this or another frame (e.g. merge steering-wheel buttons into the ABS frame, catching short presses), add rolling counters, or forward only if a condition holds. A "Try it" panel uses the firmware's own math. |
-| ⏱ **Generated frames** | Up to 8 frames the isolator builds on a timer from cached source data (scale, offset, counters), e.g. dash frames the ECU can't produce. They stop automatically when their source goes stale. |
+| ⏱ **Generated frames** | Up to 8 frames the isolator builds on a timer from cached source data (scale, offset, counters, checksums/CRC-8), e.g. dash frames the ECU can't produce. They stop automatically when their source goes stale. |
+| #️⃣ **Checksums** | Sum, XOR, nibble and CRC-8 checksums (with presets such as SAE J1850 and AUTOSAR) for modules that reject frames without a valid one. |
+| 📄 **DBC export** | Writes a `.dbc` of exactly what the isolator sends on a bus — merged bytes keep their signal names, rescaled copies their units — ready to import into the ECU software. |
 | 🛡 **Hardware filter** | Bus A's CAN controller rejects frames nothing needs, so a flooded chassis bus costs no CPU. |
 | 🔍 **Find signals** | ID sniffer, frame monitor with a bit analyzer, and **What changed?**, which finds the bit behind a button or switch by comparing a "background" capture with the action. |
 | 📈 **Graph** | Plot DBC or hand-defined signals over time, live or from a recording, with a crosshair synced across charts. |
@@ -142,6 +144,22 @@ Settings from before firmware 2.7 used a separate Buttons tab; **Transforms → 
 </details>
 
 <details>
+<summary><b>Make a module accept a frame with a checksum</b></summary>
+
+1. Capture the module's frames in the **Frame monitor**. The bit analyzer's *Worth a look* spots the rolling counter, and the checksum is the byte that changes with everything else.
+2. Add a **Checksum / CRC** step to a transform (or a checksum field to a generated frame) and try the presets (sum, two's complement, XOR, nibble sum, CRC-8 SAE J1850 / AUTOSAR) in **Try it** with captured frames until the result matches the real byte.
+3. Keep the checksum after any counter, **Send**, check the module accepts the frame, then **Save**.
+</details>
+
+<details>
+<summary><b>Set up the ECU to receive what the isolator sends</b></summary>
+
+1. Load the DBC files for your chassis devices (wheel, ABS…) on the **DBC files** tab, so their signals have names.
+2. **DBC files → Export a DBC of what the isolator sends → Bus B (to the ECU) → Download .dbc.**
+3. Import it in the ECU software. Merged bytes (e.g. wheel buttons inside the ABS frame) appear under their own names at their new position, and rescaled copies keep their units.
+</details>
+
+<details>
 <summary><b>Test settings at your desk with a recorded drive</b></summary>
 
 1. In the car: **Record & replay** → record A RX (and B RX) → **Save as candump log**.
@@ -182,7 +200,7 @@ More recipes, every tab explained, bit numbering (Motorola vs Intel), troublesho
 
 ## Performance
 
-Measured on the bench with firmware 2.6.0:
+Measured on the bench with firmware 2.8.0:
 
 | Measure | Result |
 |---|---|

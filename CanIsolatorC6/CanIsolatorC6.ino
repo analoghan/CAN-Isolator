@@ -131,7 +131,7 @@
 #include "nvs_flash.h"
 #include "mbedtls/base64.h"
 
-#define FW_VERSION_STR "2.7.0"
+#define FW_VERSION_STR "2.8.0"
 static const char    *FW_NAME       = "CanIsolatorC6";
 static const char    *FW_VERSION    = FW_VERSION_STR;
 // Marker the config tool looks for in a .bin before updating, so it can show
@@ -1442,6 +1442,9 @@ static void normalizeConfig(Config &c) {
           f.srcOrder = a.srcOrder; f.srcSigned = a.srcSigned;
         } else if (a.kind == GS_COUNTER) {
           f.step = a.step;
+        } else if (a.kind == GS_CHECKSUM) {
+          f.srcBus = a.srcBus; f.srcStart = a.srcStart; f.srcLen = a.srcLen; f.srcExt = a.srcExt;
+          f.srcId = a.srcId & 0xFFFFFF; f.staleMs = a.staleMs; f.step = a.step;
         }
       }
     }
@@ -1513,6 +1516,11 @@ static bool validateConfig(const Config &c, char *err, size_t errLen) {
         case XO_SET_LEN:   bad = o.value < 0 || o.value > 8; why = "length must be 0-8"; break;
         case XO_SET_FIELD:
         case XO_COUNTER:   bad = o.dstSigned > 1 || !genFieldFits(o.dstStart, o.dstLen, o.dstOrder, 8); why = "field outside 8 bytes"; break;
+        case XO_CHECKSUM:
+          bad = !genFieldFits(o.dstStart, o.dstLen, o.dstOrder, 8) || o.dstLen > 8; why = "field outside 8 bytes or longer than 8 bits";
+          if (!bad && (o.srcBus >= CK_COUNT || o.srcStart > o.srcLen || o.srcLen > 7 || o.srcExt > 1 || o.step >= CK_FINAL_COUNT ||
+                       o.staleMs > 255 || o.srcId > 0xFFFFFF || o.flags)) { bad = true; why = "bad checksum settings"; }
+          break;
         case XO_COPY:
         case XO_COND:
           if (o.srcBus > XS_THIS || o.srcSigned > 1 || !genFieldFits(o.srcStart, o.srcLen, o.srcOrder, 8)) { bad = true; why = "bad source field"; break; }
@@ -1538,7 +1546,11 @@ static bool validateConfig(const Config &c, char *err, size_t errLen) {
     if (g.numSig > MAX_GEN_SIG) { snprintf(err, errLen, "generated frame %u: too many fields (max %u)", i + 1, MAX_GEN_SIG); return false; }
     for (uint8_t k = 0; k < g.numSig; k++) {
       const GenSigCfg &f = g.sig[k];
-      if (f.kind != GS_SOURCE && f.kind != GS_COUNTER) { snprintf(err, errLen, "generated frame %u field %u: bad type", i + 1, k + 1); return false; }
+      if (f.kind == GS_CHECKSUM && (f.srcBus >= CK_COUNT || f.srcStart > f.srcLen || f.srcLen > 7 || f.srcExt > 1 ||
+                                    f.step >= CK_FINAL_COUNT || f.staleMs > 255 || f.dstLen > 8)) {
+        snprintf(err, errLen, "generated frame %u field %u: bad checksum settings", i + 1, k + 1); return false;
+      }
+      if (f.kind != GS_SOURCE && f.kind != GS_COUNTER && f.kind != GS_CHECKSUM) { snprintf(err, errLen, "generated frame %u field %u: bad type", i + 1, k + 1); return false; }
       if (f.dstSigned > 1 || !genFieldFits(f.dstStart, f.dstLen, f.dstOrder, g.len)) {
         snprintf(err, errLen, "generated frame %u field %u: bits outside the %u-byte frame", i + 1, k + 1, g.len); return false;
       }
@@ -1818,7 +1830,7 @@ static void sendHello() {
         FW_TAG, run ? run->label : "?", nxt ? (unsigned long)nxt->size : 0UL, fwPendingVerify, last != nullptr,
         cfgPartOk ? CFG_PART : "nvs");
   }
-  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\",\"rp\",\"ev\",\"load\",\"chg\",\"getsaved\",\"xf2\"],\"monFilters\":%u,\"txpSlots\":%u,\"rpRing\":%u}",
+  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\",\"rp\",\"ev\",\"load\",\"chg\",\"getsaved\",\"xf2\",\"ck\"],\"monFilters\":%u,\"txpSlots\":%u,\"rpRing\":%u}",
       resetReasonName(), canOk[0], canOk[1], MON_MAX_FILTERS, TXP_SLOTS, RP_RING);
   lbSend();
 }
