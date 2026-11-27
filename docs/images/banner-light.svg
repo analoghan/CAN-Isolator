@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="150" viewBox="0 0 860 150" role="img" aria-label="Bus A (chassis side) to Isolator to Bus B (standalone ECU)">
+  <style>
+    .t { font: 600 20px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #111827; }
+    .s { font: 400 14px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #4a5563; }
+    .a { font: 400 30px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #4a5563; }
+  </style>
+  <g>
+    <rect x="10" y="20" width="230" height="110" rx="12" fill="#ffffff" stroke="#d3d9e1"/>
+    <text x="125" y="70" text-anchor="middle" class="t">Bus A</text>
+    <text x="125" y="96" text-anchor="middle" class="s">chassis side · ABS, wheel, dash…</text>
+  </g>
+  <text x="270" y="86" text-anchor="middle" class="a">⇄</text>
+  <g>
+    <rect x="300" y="20" width="260" height="110" rx="12" fill="#f6e9ec" stroke="#a3263f"/>
+    <rect x="300" y="20" width="260" height="6" rx="3" fill="#a3263f"/>
+    <path d="M430 40l9 11-9 11-9-11z" fill="#a3263f"/>
+    <text x="430" y="88" text-anchor="middle" class="t">Isolator</text>
+    <text x="430" y="112" text-anchor="middle" class="s">routes · transforms · generated frames</text>
+  </g>
+  <text x="590" y="86" text-anchor="middle" class="a">⇄</text>
+  <g>
+    <rect x="620" y="20" width="230" height="110" rx="12" fill="#ffffff" stroke="#d3d9e1"/>
+    <rect x="620" y="20" width="230" height="6" rx="3" fill="#d9822b"/>
+    <text x="735" y="70" text-anchor="middle" class="t">Bus B</text>
+    <text x="735" y="96" text-anchor="middle" class="s">standalone ECU</text>
+  </g>
+</svg>

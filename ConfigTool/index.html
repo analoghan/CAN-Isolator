@@ -3497,11 +3497,12 @@ async function rpStart() {
   try { list = rpBuild(); } catch (e) { toast(e.message, true); return; }
   if (!list.length) { toast('Nothing to replay with these choices.', true); return; }
   if (list.some(x => x.mode < 2) && !confirmSend()) return;
-  Object.assign(P, { list, dur: list[list.length - 1].t, idx: 0, loopN: 0, offset: 0, running: true, endSent: false, status: null, free: (state.hello.rpRing || 1024) - 1, t0: Date.now() });
+  Object.assign(P, { list, dur: list[list.length - 1].t, idx: 0, loopN: 0, offset: 0, running: true, endSent: false, status: null, goSent: false, free: (state.hello.rpRing || 1024) - 1, t0: Date.now() });
   try {
     await lockedBg(() => requestOk('rp start'));
     await rpPump(true);
-    await lockedBg(() => requestOk('rp go'));
+    P.status = await lockedBg(() => requestOk('rp go'));
+    P.goSent = true;
   } catch (e) { P.running = false; toast('Replay: ' + e.message, true); renderTab(false); return; }
   clearInterval(P.timer); P.timer = setInterval(rpPump, 100);
   renderTab(false);
@@ -3542,7 +3543,7 @@ async function rpPump(first) {
     }
     if (!lines && (!P.statAt || Date.now() - P.statAt > 400)) { P.status = await lockedBg(() => requestOk('rp')); P.free = P.status.free; P.statAt = Date.now(); }
     if (P.status && !P.status.on) { P.running = false; clearInterval(P.timer); toast('The isolator stopped the replay.', true); }
-    else if (P.endSent && P.status && !P.status.run) { P.running = false; clearInterval(P.timer); toast(`Replay finished: ${P.status.sent.toLocaleString()} frames.`); }
+    else if (P.goSent && P.endSent && P.status && !P.status.run) { P.running = false; clearInterval(P.timer); toast(`Replay finished: ${P.status.sent.toLocaleString()} frames.`); }
   } catch (e) { toast('Replay: ' + e.message, true); rpStop(true); }
   rpPumping = false;
   if (state.tab === 'replay') rpRefresh();

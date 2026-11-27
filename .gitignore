@@ -11,3 +11,7 @@
 *.m1pkg
 *.dbc
 Ultimate_Gauge_Board_AST_Animated_V2.ino
+
+# tools/export-guide.js dependency
+node_modules/
+package-lock.json
