@@ -1,0 +1,13 @@
+# Build output
+.pio/
+.vscode/
+*.elf
+*.map
+
+# macOS
+.DS_Store
+
+# MoTeC packages and project-specific files kept out of the public repo
+*.m1pkg
+*.dbc
+Ultimate_Gauge_Board_AST_Animated_V2.ino

@@ -1,0 +1,12 @@
+# CanIsolatorC6 partition table (4 MB flash).
+# Same as the Arduino default up to app1, so existing boards keep their
+# firmware and the original settings area. New: 'isocfg', a 64 KB settings
+# area (the isolator's own NVS) carved from the start of the unused SPIFFS area.
+# Name,   Type, SubType,  Offset,   Size,
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x140000,
+app1,     app,  ota_1,    0x150000, 0x140000,
+isocfg,   data, nvs,      0x290000, 0x10000,
+spiffs,   data, spiffs,   0x2A0000, 0x150000,
+coredump, data, coredump, 0x3F0000, 0x10000,
