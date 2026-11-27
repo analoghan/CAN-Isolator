@@ -32,10 +32,13 @@ There's nothing to install.
 
 - **Status**: live counts per bus, bus state, error counters, CPU load, and the generated frames.
   With firmware 2.6+ also **bus load** (now, peak of the busiest 100 ms, and a 15-minute chart) and an **event history**: bus state changes and bursts of errors, overflows and stale frames, kept on the isolator since it started, so you can read what happened on a drive afterwards.
-- **Routes**, **Buttons**, **Bus settings**: the settings.
+- **Routes**, **Bus settings**: the settings.
+- **Buttons** (old): only shown while settings still use the old built-in "Merge wheel buttons". Transforms → **Convert to a transform** replaces it with an equivalent transform (firmware 2.7+).
 - **Transforms**: named lists of steps that rewrite the frames a route forwards. A route picks one in its Transform column.
   - Up to 8 transforms, 6 steps each.
   - Step types: change the ID or length; set a field to a value (also how you clear or set bits); copy a field from this frame or another frame, with scaling; forward only if a field matches (=, ≠, <, ≤, >, ≥, has all bits, has any bit); rolling counter.
+  - Copy-step options (firmware 2.7+): write 0 when the source frame is missing or stale ("released"), copy only the bits in a mask, and catch short presses (a press shorter than one forwarded frame still shows once).
+  - **+ Merge bytes from another frame** starts a transform that copies whole bytes from another frame, for example steering wheel buttons into the ABS frame. This replaces the old Buttons tab.
   - "Try it" runs a test frame through the transform with the same math as the firmware, and shows which step drops it and why.
 - **Generated frames**: frames the isolator builds and sends on a timer.
   - Each has an ID, bus, period, length, constant bytes, and up to 4 fields.

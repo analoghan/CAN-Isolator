@@ -173,11 +173,24 @@ static inline bool genBuild(const GenCfg &g, uint8_t out[8], uint32_t counters[M
 // Sources: srcBus 0 / 1 = the latest cached frame srcId on Bus A / B,
 //          XS_THIS (2)  = this frame as it was received (before any step).
 // A cached source that is missing or older than staleMs: the frame is dropped,
-// unless flags & XF_KEEP_IF_MISSING (then the step is skipped).
+// unless flags & XF_KEEP_IF_MISSING (the step is skipped) or, for COPY,
+// flags & XF_ZERO_IF_MISSING (0 is written into the field, e.g. "released").
+// COPY options:
+//   XF_MASK       : only the bits set in 'value' (the dst field's raw bits) are
+//                   written; the others keep the frame's own value.
+//   XF_CATCH_TAPS : (cached source) a bit reads 1 if it was set in ANY source
+//                   frame since this transform last ran, so a press shorter
+//                   than one forwarded frame still shows once. Bit-per-button
+//                   data only. The caller provides that data through getSrc.
+// Together these do what the old Buttons map did (mergeButtons).
 static const uint8_t MAX_XF     = 8;     // custom transforms
 static const uint8_t MAX_XF_OPS = 6;     // steps per transform
 static const uint8_t XS_THIS    = 2;
 static const uint8_t XF_KEEP_IF_MISSING = 0x01;
+static const uint8_t XF_ZERO_IF_MISSING = 0x02;   // COPY only
+static const uint8_t XF_CATCH_TAPS      = 0x04;   // COPY from a cached frame only
+static const uint8_t XF_MASK            = 0x08;   // COPY only: 'value' = bits to write
+static const uint8_t XF_FLAGS_ALL       = 0x0F;
 
 enum XfOpKind : uint8_t { XO_NONE = 0, XO_SET_ID = 1, XO_SET_LEN = 2, XO_SET_FIELD = 3, XO_COPY = 4, XO_COND = 5, XO_COUNTER = 6 };
 enum XfCmp    : uint8_t { XC_EQ = 0, XC_NE, XC_LT, XC_LE, XC_GT, XC_GE, XC_ALL_BITS, XC_ANY_BIT, XC_COUNT };
@@ -226,6 +239,16 @@ static inline bool xfCompare(int64_t a, uint32_t rawA, const XfOpCfg &o) {
 // getSrc(i) returns the 8 data bytes of step i's cached source frame, or
 // nullptr if missing / stale / too short. Returns false = drop the frame.
 // counters[] advance only when the frame is forwarded.
+// Writes v into the COPY step's dst field; with XF_MASK only the bits in 'value'.
+static inline void xfPutMasked(uint8_t data[8], const XfOpCfg &o, uint32_t v) {
+  if (o.flags & XF_MASK) {
+    const uint32_t fm = o.dstLen >= 32 ? 0xFFFFFFFFu : ((1u << o.dstLen) - 1);
+    const uint32_t m = (uint32_t)o.value & fm;
+    v = (genGet(data, o.dstStart, o.dstLen, o.dstOrder) & ~m) | (v & m);
+  }
+  genPut(data, o.dstStart, o.dstLen, o.dstOrder, v);
+}
+
 template <typename GetSrc>
 static inline bool xfApply(const XfCfg &x, uint32_t &id, uint8_t &ext, uint8_t &len, uint8_t data[8],
                            const uint8_t orig[8], uint8_t origLen, uint32_t counters[MAX_XF_OPS], GetSrc getSrc) {
@@ -235,7 +258,11 @@ static inline bool xfApply(const XfCfg &x, uint32_t &id, uint8_t &ext, uint8_t &
     if (o.kind == XO_COPY || o.kind == XO_COND) {
       if (o.srcBus == XS_THIS) src = genFieldFits(o.srcStart, o.srcLen, o.srcOrder, origLen) ? orig : nullptr;
       else src = getSrc(i);
-      if (!src) { if (o.flags & XF_KEEP_IF_MISSING) continue; return false; }
+      if (!src) {
+        if (o.flags & XF_KEEP_IF_MISSING) continue;
+        if (o.kind == XO_COPY && (o.flags & XF_ZERO_IF_MISSING)) { xfPutMasked(data, o, 0); continue; }
+        return false;
+      }
     }
     switch (o.kind) {
       case XO_SET_ID:  id = o.srcId; ext = o.srcExt; break;
@@ -254,7 +281,7 @@ static inline bool xfApply(const XfCfg &x, uint32_t &id, uint8_t &ext, uint8_t &
         GenSigCfg s; memset(&s, 0, sizeof(s));
         s.srcLen = o.srcLen; s.srcSigned = o.srcSigned; s.dstLen = o.dstLen; s.dstSigned = o.dstSigned;
         s.factor = o.factor; s.offset = o.offset;
-        genPut(data, o.dstStart, o.dstLen, o.dstOrder, genScale(genGet(src, o.srcStart, o.srcLen, o.srcOrder), s));
+        xfPutMasked(data, o, genScale(genGet(src, o.srcStart, o.srcLen, o.srcOrder), s));
         break;
       }
       case XO_COND: {

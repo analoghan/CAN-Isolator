@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Firmware 2.6.0" src="https://img.shields.io/badge/firmware-2.6.0-a3263f">
+  <img alt="Firmware 2.7.0" src="https://img.shields.io/badge/firmware-2.7.0-a3263f">
   <img alt="ESP32-C6" src="https://img.shields.io/badge/hardware-ESP32--C6%20CANipulator-2f6fd6">
   <img alt="Chrome or Edge" src="https://img.shields.io/badge/config%20tool-Chrome%20%7C%20Edge-d9822b">
   <img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-555">
@@ -40,7 +40,7 @@ The isolator splits the network in two:
 | Feature | What it does |
 |---|---|
 | 🔀 **Routes** | First-match route table (up to 128 rows): pass or drop by ID or range, per direction, with rate limit, on-change + heartbeat, and a transform. Unrouted A → B traffic is dropped by default (a whitelist). |
-| 🛠 **Transforms** | Rewrite frames in flight: change the ID or length, set or clear bits, copy scaled fields from this or another frame, add rolling counters, or forward only if a condition holds. A "Try it" panel uses the firmware's own math. |
+| 🛠 **Transforms** | Rewrite frames in flight: change the ID or length, set or clear bits, copy scaled or masked fields from this or another frame (e.g. merge steering-wheel buttons into the ABS frame, catching short presses), add rolling counters, or forward only if a condition holds. A "Try it" panel uses the firmware's own math. |
 | ⏱ **Generated frames** | Up to 8 frames the isolator builds on a timer from cached source data (scale, offset, counters), e.g. dash frames the ECU can't produce. They stop automatically when their source goes stale. |
 | 🛡 **Hardware filter** | Bus A's CAN controller rejects frames nothing needs, so a flooded chassis bus costs no CPU. |
 | 🔍 **Find signals** | ID sniffer, frame monitor with a bit analyzer, and **What changed?**, which finds the bit behind a button or switch by comparing a "background" capture with the action. |
@@ -120,6 +120,16 @@ Frames that can't be sent within the *TX max age* (50 ms) are discarded rather t
 1. **ID sniffer → What changed?** → *Record background* with nothing touched (10 s).
 2. **Start**, press the button a few times, **Stop**. Do two or three tries.
 3. The bit that appears in every try is the one. Click **analyze** to open it in the bit analyzer, name it, and **Save signal**.
+</details>
+
+<details>
+<summary><b>Merge steering-wheel buttons into another frame</b></summary>
+
+1. **Transforms → + Merge bytes from another frame.**
+2. Set the source to the wheel frame (Bus A, its ID) and pick which wheel byte goes into which byte, one copy step per byte. *If missing or stale: write 0* makes the buttons read “released” when the wheel goes quiet. Tick *catch short presses* for bytes where each bit is one button.
+3. On **Routes**, pick the transform in the Transform column of the frame that should carry the buttons (e.g. the ABS frame), then **Send** and **Save**.
+
+Settings from before firmware 2.7 used a separate Buttons tab; **Transforms → Convert to a transform** turns it into exactly this.
 </details>
 
 <details>

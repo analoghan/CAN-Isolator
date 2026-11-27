@@ -131,7 +131,7 @@
 #include "nvs_flash.h"
 #include "mbedtls/base64.h"
 
-#define FW_VERSION_STR "2.6.0"
+#define FW_VERSION_STR "2.7.0"
 static const char    *FW_NAME       = "CanIsolatorC6";
 static const char    *FW_VERSION    = FW_VERSION_STR;
 // Marker the config tool looks for in a .bin before updating, so it can show
@@ -311,15 +311,6 @@ static const uint16_t DEFAULT_BUTTON_STALE_MS = 250;
 // dropped (whitelist).
 static const bool DEFAULT_HW_FILTER_A = true;
 
-// The ABS frame (690) uses data bytes 1-3 only, so bytes 4-8 are free. The
-// steering wheel frame (376) is still forwarded to the M1 unchanged; the
-// bytes mapped here are ALSO copied into 690, so the M1 can read buttons
-// beyond the first 16 without another receive slot.
-static const ButtonMapCfg DEFAULT_BUTTON_MAP[] = {
-  //  wheel  ABS   mask   catchTaps
-  {   6,     3,    0xFF,  0 },   // wheel byte 7 -> ABS byte 4
-  {   7,     4,    0xFF,  0 },   // wheel byte 8 -> ABS byte 5
-};
 
 // The first matching row wins (it must match ID, ID type, and direction).
 // Put specific DROP rows ABOVE any range rows they should override.
@@ -328,7 +319,7 @@ static const ButtonMapCfg DEFAULT_BUTTON_MAP[] = {
 static const RouteCfg DEFAULT_ROUTES[] = {
   //  first       last ext dir     action xf                minMs onChg hbMs  note (max 23 chars)
   // ===== Bus A (chassis) -> Bus B (ECU): whitelist =====
-  { ID_ABS,       0,   0,  A_TO_B, PASS,  XF_MERGE_BUTTONS, 0,    0,    0,    "ABS + wheel buttons"     },
+  { ID_ABS,       0,   0,  A_TO_B, PASS,  XF_CUSTOM + 0,    0,    0,    0,    "ABS + wheel buttons"     },
   { ID_BUTTONS,   0,   0,  A_TO_B, PASS,  XF_NONE,          0,    0,    0,    "Steering wheel buttons"  },
   { 0x0CE,        0,   0,  A_TO_B, PASS,  XF_NONE,          0,    0,    0,    "ABS wheel speeds"        },
   // ===== Bus B (ECU) -> Bus A (chassis): ECU output used by the gauge board =====
@@ -507,6 +498,29 @@ static void defaultSourceField(GenCfg &g, uint8_t srcBus, uint32_t srcId, uint8_
   f.srcStart = srcStart; f.srcLen = srcLen; f.srcOrder = srcOrder;
   f.dstStart = dstStart; f.dstLen = dstLen; f.dstOrder = dstOrder;
   f.factor = factor; f.offset = offset; f.staleMs = DEFAULT_GEN_STALE_MS;
+}
+
+// Default transform 0, "ABS + wheel buttons" (used by the 690 route): the ABS
+// frame uses data bytes 1-3 only, so bytes 4-8 are free. The steering wheel
+// frame (376) is still forwarded to the ECU unchanged; wheel bytes 7 and 8 are
+// ALSO copied into ABS bytes 4 and 5, so the ECU can read more buttons without
+// another receive slot. Wheel frame older than 250 ms = those bytes read 0
+// (released). (Firmware before 2.7 did this with the built-in mergeButtons
+// transform and the Buttons map; that still works for older saved settings.)
+static void loadDefaultXforms(Config &c) {
+  c.numXf = 1;
+  XfCfg &x = c.xforms[0];
+  strncpy(x.name, "ABS + wheel buttons", GEN_NAME_LEN - 1);
+  auto copyByte = [](XfOpCfg &o, uint8_t srcByte, uint8_t dstByte) {
+    o.kind = XO_COPY; o.srcBus = BUS_A; o.srcId = ID_BUTTONS; o.srcExt = 0;
+    o.srcStart = srcByte * 8; o.srcLen = 8; o.srcOrder = BO_INTEL;
+    o.dstStart = dstByte * 8; o.dstLen = 8; o.dstOrder = BO_INTEL;
+    o.factor = 1.0f; o.offset = 0.0f; o.staleMs = DEFAULT_BUTTON_STALE_MS; o.flags = XF_ZERO_IF_MISSING;
+  };
+  x.ops[0].kind = XO_SET_LEN; x.ops[0].value = 8;
+  copyByte(x.ops[1], 6, 3);   // wheel byte 7 -> ABS byte 4
+  copyByte(x.ops[2], 7, 4);   // wheel byte 8 -> ABS byte 5
+  x.numOps = 3;
 }
 
 static void loadDefaultGens(Config &c) {
@@ -1075,12 +1089,30 @@ static bool runCustomXf(uint8_t xi, CAN_message_t &out, const CAN_message_t &rx)
   uint32_t id = out.id;
   uint8_t  ext = out.flags.extended, len = out.len;
   const uint32_t now = millis();
+  // "Catch taps" steps read the latest source frame ORed with every bit set
+  // since this transform last ran. Take that snapshot once per source frame
+  // (several steps may read the same one), then clear those latches.
+  uint8_t taps[MAX_XF_OPS][8];
+  uint8_t tapSlot[MAX_XF_OPS], nTap = 0;
+  int8_t  tapOf[MAX_XF_OPS];
+  for (uint8_t k = 0; k < x.numOps; k++) {
+    tapOf[k] = -1;
+    if (!(x.ops[k].flags & XF_CATCH_TAPS) || x.ops[k].srcBus == XS_THIS) continue;
+    const uint8_t slot = xfSrcCache[xi][k];
+    for (uint8_t j = 0; j < nTap; j++) if (tapSlot[j] == slot) tapOf[k] = j;
+    if (tapOf[k] < 0) {
+      const CachedFrame &cf = frameCache[slot];
+      for (uint8_t b = 0; b < 8; b++) taps[nTap][b] = cf.msg.buf[b] | cf.latch[b];
+      tapSlot[nTap] = slot; tapOf[k] = nTap++;
+    }
+  }
   bool keep = xfApply(x, id, ext, len, out.buf, rx.buf, rx.len, xfCounters[xi], [&](uint8_t k) -> const uint8_t * {
     const CachedFrame &cf = frameCache[xfSrcCache[xi][k]];
     if (!cf.valid || cf.msg.len < xfSrcMinLen[xi][k]) return nullptr;
     if (x.ops[k].staleMs && (now - cf.rxMs) > x.ops[k].staleMs) return nullptr;
-    return cf.msg.buf;
+    return tapOf[k] >= 0 ? taps[tapOf[k]] : cf.msg.buf;
   });
+  for (uint8_t j = 0; j < nTap; j++) memset(frameCache[tapSlot[j]].latch, 0, 8);
   if (!keep) return false;
   out.id = id; out.flags.extended = ext; out.len = len;
   return true;
@@ -1429,13 +1461,12 @@ static void loadDefaults(Config &c) {
   c.buttonStaleMs   = DEFAULT_BUTTON_STALE_MS;
   c.buttonsId       = ID_BUTTONS;
   c.buttonsExt      = 0;
-  c.numButtonMap    = sizeof(DEFAULT_BUTTON_MAP) / sizeof(DEFAULT_BUTTON_MAP[0]);
+  c.numButtonMap    = 0;   // the old Buttons map; the defaults use the "ABS + wheel buttons" transform instead
   c.numRoutes       = sizeof(DEFAULT_ROUTES) / sizeof(DEFAULT_ROUTES[0]);
-  static_assert(sizeof(DEFAULT_BUTTON_MAP) / sizeof(DEFAULT_BUTTON_MAP[0]) <= MAX_BTN, "button map too long");
   static_assert(sizeof(DEFAULT_ROUTES) / sizeof(DEFAULT_ROUTES[0]) <= MAX_ROUTES, "route table too long");
-  memcpy(c.buttonMap, DEFAULT_BUTTON_MAP, sizeof(DEFAULT_BUTTON_MAP));
   memcpy(c.routes, DEFAULT_ROUTES, sizeof(DEFAULT_ROUTES));
   loadDefaultGens(c);
+  loadDefaultXforms(c);
   c.hwFilterA = DEFAULT_HW_FILTER_A;
   normalizeConfig(c);
 }
@@ -1484,7 +1515,10 @@ static bool validateConfig(const Config &c, char *err, size_t errLen) {
         case XO_COUNTER:   bad = o.dstSigned > 1 || !genFieldFits(o.dstStart, o.dstLen, o.dstOrder, 8); why = "field outside 8 bytes"; break;
         case XO_COPY:
         case XO_COND:
-          if (o.srcBus > XS_THIS || o.srcSigned > 1 || o.flags > 1 || !genFieldFits(o.srcStart, o.srcLen, o.srcOrder, 8)) { bad = true; why = "bad source field"; break; }
+          if (o.srcBus > XS_THIS || o.srcSigned > 1 || !genFieldFits(o.srcStart, o.srcLen, o.srcOrder, 8)) { bad = true; why = "bad source field"; break; }
+          if ((o.flags & ~XF_FLAGS_ALL) || (o.kind == XO_COND && o.flags > XF_KEEP_IF_MISSING) ||
+              ((o.flags & XF_KEEP_IF_MISSING) && (o.flags & XF_ZERO_IF_MISSING)) ||
+              ((o.flags & XF_CATCH_TAPS) && o.srcBus == XS_THIS)) { bad = true; why = "bad options"; break; }
           if (o.srcBus != XS_THIS && (o.srcExt > 1 || !validId(o.srcId, o.srcExt))) { bad = true; why = "bad source ID"; break; }
           if (o.kind == XO_COND && o.cmp >= XC_COUNT) { bad = true; why = "bad comparison"; break; }
           if (o.kind == XO_COPY && (o.dstSigned > 1 || !genFieldFits(o.dstStart, o.dstLen, o.dstOrder, 8))) { bad = true; why = "field outside 8 bytes"; break; }
@@ -1784,7 +1818,7 @@ static void sendHello() {
         FW_TAG, run ? run->label : "?", nxt ? (unsigned long)nxt->size : 0UL, fwPendingVerify, last != nullptr,
         cfgPartOk ? CFG_PART : "nvs");
   }
-  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\",\"rp\",\"ev\",\"load\",\"chg\",\"getsaved\"],\"monFilters\":%u,\"txpSlots\":%u,\"rpRing\":%u}",
+  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\",\"rp\",\"ev\",\"load\",\"chg\",\"getsaved\",\"xf2\"],\"monFilters\":%u,\"txpSlots\":%u,\"rpRing\":%u}",
       resetReasonName(), canOk[0], canOk[1], MON_MAX_FILTERS, TXP_SLOTS, RP_RING);
   lbSend();
 }

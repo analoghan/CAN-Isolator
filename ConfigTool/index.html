@@ -131,6 +131,7 @@
   .help-table td, .help-table th { vertical-align: top; }
   .callout { border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); padding: 8px 12px; border-radius: 6px; margin: 10px 0; max-width: 860px; }
   .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .panel.callout-panel { border-left: 4px solid var(--warn); }
   .help-diagram { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin: 10px 0; max-width: 860px; }
   .hd-box { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 150px; font-weight: 600; background: var(--panel); }
   .hd-box small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
@@ -810,6 +811,9 @@ function syncNavTop() { document.documentElement.style.setProperty('--hdr-h', $(
 window.addEventListener('resize', syncNavTop);
 
 function render() {
+  const legacy = legacyButtons(state.edit);
+  $('nav button[data-tab=buttons]').hidden = !legacy;
+  if (!legacy && state.tab === 'buttons') state.tab = 'transforms';
   syncNavTop();
   for (const b of document.querySelectorAll('#numFmt button')) b.classList.toggle('on', b.dataset.f === numFmt.mode);
   updateHeader(); renderTab(false);
@@ -991,7 +995,7 @@ function routesView() {
       h('td', {}, h('select', { onchange: upd(t => r.dir = +t.value) }, [1, 2, 3].map(d => h('option', { value: d, selected: r.dir === d }, DIR_LABEL[d])))),
       h('td', {}, h('select', { onchange: upd(t => r.action = +t.value) }, h('option', { value: 0, selected: r.action === 0 }, 'Pass'), h('option', { value: 1, selected: r.action === 1 }, 'Drop'))),
       h('td', {}, h('select', { style: 'max-width:170px', onchange: upd(t => r.xf = +t.value) },
-        xfNames.map((n, k) => h('option', { value: k, selected: r.xf === k }, XF_LABEL[n] || n)),
+        xfNames.map((n, k) => n === 'mergeButtons' && r.xf !== k ? null : h('option', { value: k, selected: r.xf === k }, (XF_LABEL[n] || n) + (n === 'mergeButtons' ? ' (old)' : ''))),
         (m.xforms || []).map((x, k) => h('option', { value: xfNames.length + k, selected: r.xf === xfNames.length + k }, x.name || `Transform ${k + 1}`)))),
       h('td', {}, numInput('minMs')),
       h('td', { style: 'text-align:center' }, h('input', { type: 'checkbox', checked: r.onChange, onchange: upd(t => r.onChange = t.checked ? 1 : 0) })),
@@ -1032,7 +1036,8 @@ function routesView() {
         'Min ms: a 100 Hz frame with Min ms 100 is forwarded at 10 Hz, always with the newest data. ',
         'On change: forward only when the data differs from what was last sent; Heartbeat resends unchanged data that often so the far side doesn’t time out. ',
         'Rate limit and on-change apply to single-ID rows only. ',
-        'Merge wheel buttons: copies the bytes listed on the Buttons tab into this frame.')));
+        'Transform: one of yours from the Transforms tab.',
+        legacyButtons(m) ? ' “Merge wheel buttons (old)” copies the bytes on the Buttons tab; convert it on the Transforms tab.' : '')));
 }
 
 function addRoute(r) {
@@ -1076,9 +1081,12 @@ function buttonsView() {
 
   const mergeRows = m.routes.map((r, i) => ({ r, i })).filter(({ r }) => state.hello?.xf[r.xf] === 'mergeButtons');
 
+  if (!legacyButtons(m)) return h('div', { class: 'panel' }, h('h2', {}, 'Buttons has moved to Transforms'),
+    h('p', { class: 'hint', style: 'margin:0' }, 'To copy bytes of another frame (such as steering wheel buttons) into a frame, use Transforms → “+ Merge bytes from another frame”.'));
   return h('div', {},
+    legacyButtonsCallout(),
     h('div', { class: 'panel' },
-      h('h2', {}, 'Steering wheel buttons merged into another frame'),
+      h('h2', {}, 'Steering wheel buttons merged into another frame (old setup)'),
       h('p', { class: 'hint' }, 'Rows that use the “Merge wheel buttons” transform get these wheel bytes copied in. ',
         mergeRows.length ? ['Used by: ', mergeRows.map(({ r, i }) => `row ${i + 1} (${fmtId(r.first, r.ext)}${r.note ? ' ' + r.note : ''})`).join(', '), '.']
                          : h('b', {}, 'No route uses it at the moment.')),
@@ -2416,6 +2424,16 @@ const XO = { SET_ID: 1, SET_LEN: 2, SET_FIELD: 3, COPY: 4, COND: 5, COUNTER: 6 }
 const XO_LABEL = { 1: 'Change the ID', 2: 'Change the length', 3: 'Set a field to a value', 4: 'Copy a field (scaled)', 5: 'Forward only if…', 6: 'Rolling counter' };
 const XC_LABEL = ['=', '≠', '<', '≤', '>', '≥', 'has all these bits', 'has any of these bits'];
 const XS_THIS_JS = 2;
+// Step options (GenEngine.h XF_*): missing source -> skip / write 0; catch short presses; write only masked bits.
+const XF_KEEP = 1, XF_ZERO = 2, XF_TAPS = 4, XF_MASK = 8;
+function xfPutMaskedJs(data, o, v) {
+  if (o.flags & XF_MASK) {
+    const fm = o.dstLen >= 32 ? 0xFFFFFFFF : 2 ** o.dstLen - 1;
+    const m = ((o.value >>> 0) & fm) >>> 0;
+    v = (((genGetJs(data, o.dstStart, o.dstLen, o.dstOrder) & ~m) | (v & m)) >>> 0);
+  }
+  genPutJs(data, o.dstStart, o.dstLen, o.dstOrder, v);
+}
 
 // frame: { id, ext, len, data[8] }; cached[i]: 8 data bytes of step i's cached source, or null.
 // Returns { keep, id, ext, len, data, step (index of the dropping step), why }.
@@ -2427,7 +2445,11 @@ function xfApplyJs(x, frame, cached, counters) {
     let src = null;
     if (o.kind === XO.COPY || o.kind === XO.COND) {
       src = o.srcBus === XS_THIS_JS ? (genFits(o.srcStart, o.srcLen, o.srcOrder, origLen) ? orig : null) : cached[i];
-      if (!src) { if (o.flags & 1) continue; return { keep: false, step: i, why: o.srcBus === XS_THIS_JS ? 'the frame is too short for the source field' : 'the source frame is missing or stale' }; }
+      if (!src) {
+        if (o.flags & XF_KEEP) continue;
+        if (o.kind === XO.COPY && (o.flags & XF_ZERO)) { xfPutMaskedJs(data, o, 0); continue; }
+        return { keep: false, step: i, why: o.srcBus === XS_THIS_JS ? 'the frame is too short for the source field' : 'the source frame is missing or stale' };
+      }
     }
     switch (o.kind) {
       case XO.SET_ID: id = o.srcId; ext = o.srcExt; break;
@@ -2435,7 +2457,7 @@ function xfApplyJs(x, frame, cached, counters) {
       case XO.SET_FIELD: { const m = 2 ** o.dstLen; genPutJs(data, o.dstStart, o.dstLen, o.dstOrder, ((o.value % m) + m) % m); break; }
       case XO.COPY: {
         const raw = genGetJs(src, o.srcStart, o.srcLen, o.srcOrder);
-        genPutJs(data, o.dstStart, o.dstLen, o.dstOrder, toField(genScaleJs(raw, o), o.dstLen));
+        xfPutMaskedJs(data, o, toField(genScaleJs(raw, o), o.dstLen));
         break;
       }
       case XO.COND: {
@@ -2450,6 +2472,46 @@ function xfApplyJs(x, frame, cached, counters) {
     }
   }
   return { keep: true, id, ext, len, data: data.slice(0, len) };
+}
+
+// "Copy byte s of another frame into byte d of this one", whole bytes (Intel numbering), like the old Buttons map.
+function mergeStep(bus, id, ext, srcByte, dstByte, staleMs, mask, taps) {
+  return { ...newStep(XO.COPY), srcBus: bus, srcId: id, srcExt: ext, srcStart: srcByte * 8, srcLen: 8, srcOrder: BO_INTEL,
+           dstStart: dstByte * 8, dstLen: 8, dstOrder: BO_INTEL, staleMs, value: mask === 0xFF ? 0 : mask,
+           flags: XF_ZERO | (taps ? XF_TAPS : 0) | (mask === 0xFF ? 0 : XF_MASK) };
+}
+const mergeIdx = () => (state.hello?.xf ?? ['none', 'mergeButtons']).indexOf('mergeButtons');
+// The old Buttons setup is in use: a route picks the built-in merge, or the map has rows.
+const legacyButtons = (m) => !!m && (m.btn.length > 0 || m.routes.some(r => r.xf === mergeIdx()));
+
+// Replace the Buttons map + built-in merge with an equivalent custom transform.
+function convertButtons() {
+  const m = state.edit, base = state.hello?.xfCustom ?? 2, maxOps = state.hello?.maxXfOps ?? 6;
+  if (state.hello && !has('xf2')) { toast('Converting needs isolator firmware 2.7 or newer (More… → Update firmware).', true); return; }
+  if (m.btn.length + 1 > maxOps) { toast(`A transform has ${maxOps} steps, so it can merge up to ${maxOps - 1} bytes; the Buttons map has ${m.btn.length}.`, true); return; }
+  if (m.xforms.length >= (state.hello?.maxXf ?? 8)) { toast('All transform slots are used. Delete one first.', true); return; }
+  const users = m.routes.filter(r => r.xf === mergeIdx());
+  const name = cleanNote(users[0]?.note || 'Wheel buttons merge').slice(0, state.hello?.genNameLen ?? 23);
+  m.xforms.push({ name, ops: [{ ...newStep(XO.SET_LEN), value: 8 }, ...m.btn.map(b => mergeStep(0, m.btnId, m.btnExt, b.src, b.dst, m.btnStale, b.mask, b.taps))] });
+  const xi = m.xforms.length - 1;
+  users.forEach(r => { r.xf = base + xi; });
+  m.btn = [];
+  markDirty();
+  state.tab = 'transforms';
+  render();
+  toast(`Converted to the transform “${name}”` + (users.length ? ` and pointed ${users.length} route(s) at it` : '') + '. Check it, then Send and Save.');
+}
+
+function legacyButtonsCallout() {
+  const m = state.edit;
+  if (!legacyButtons(m)) return null;
+  const users = m.routes.map((r, i) => ({ r, i })).filter(({ r }) => r.xf === mergeIdx());
+  return h('div', { class: 'panel callout-panel' },
+    h('h2', {}, 'Buttons is now part of Transforms'),
+    h('p', { class: 'hint' }, 'The old Buttons map (used by the built-in “Merge wheel buttons”' + (users.length ? ` on ${users.map(({ r, i }) => `row ${i + 1}, ${fmtId(r.first, r.ext)}`).join('; ')}` : '') +
+      ') can be turned into an ordinary transform that does the same job: copy the wheel bytes, read 0 when the wheel frame is stale, and catch short presses where you had that on. It then shows up here with all its steps, and the Buttons tab goes away.'),
+    h('div', { class: 'toolbar', style: 'margin:0' }, h('button', { class: 'primary', disabled: !!state.hello && !has('xf2'), onclick: convertButtons }, 'Convert to a transform'),
+      state.hello && !has('xf2') ? h('span', { class: 'muted' }, 'Needs isolator firmware 2.7 or newer.') : h('span', { class: 'muted' }, 'Nothing changes on the board until you Send.')));
 }
 
 function newStep(kind) {
@@ -2472,6 +2534,9 @@ function xfIssues(m, xi) {
     if (o.kind === XO.COPY && (!Number.isFinite(o.factor) || !Number.isFinite(o.offset))) e.push(`${n}: factor / offset must be numbers`);
     if (usesSrc && !(o.staleMs >= 0 && o.staleMs <= 65535)) e.push(`${n}: stale time 0-65535 ms`);
     if (o.kind === XO.COUNTER && !(o.step >= 0 && o.step <= 255)) e.push(`${n}: step 0-255`);
+    if ((o.flags & XF_TAPS) && o.srcBus === XS_THIS_JS) e.push(`${n}: “catch short presses” needs a source frame from Bus A or B`);
+    if ((o.flags & XF_TAPS) && (o.factor !== 1 || o.offset !== 0)) w.push(`${n}: “catch short presses” is meant for one bit per button, not scaled values`);
+    if ((o.flags & ~XF_KEEP) && state.hello && !has('xf2')) e.push(`${n}: these copy options need isolator firmware 2.7 or newer (More… → Update firmware)`);
   });
   const used = m.routes.filter(r => r.xf === (state.hello?.xfCustom ?? 2) + xi);
   if (used.some(r => r.minMs || r.onChange) && x.ops.some(o => o.kind === XO.COUNTER)) w.push('a route using this is rate-limited: counter values it holds back are skipped');
@@ -2502,7 +2567,10 @@ function transformsView() {
         'Fields use DBC bit numbering (Motorola: start = highest bit; Intel: start = lowest bit). “This frame” means the frame as received, before any step.'),
       h('div', { class: 'toolbar', style: 'margin:0' },
         h('button', { disabled: m.xforms.length >= max, onclick: () => { m.xforms.push({ name: 'Transform ' + (m.xforms.length + 1), ops: [] }); markDirty(); renderTab(false); } }, '+ Add transform'),
+        h('button', { disabled: m.xforms.length >= max, title: 'Copy bytes of another frame (e.g. steering wheel buttons) into the frames this route forwards',
+          onclick: () => { m.xforms.push({ name: 'Merge bytes', ops: [{ ...newStep(XO.SET_LEN), value: 8 }, mergeStep(0, 0x100, 0, 0, 0, 250, 0xFF, 0)] }); markDirty(); renderTab(false); } }, '+ Merge bytes from another frame'),
         h('span', { class: 'muted' }, `${m.xforms.length} of ${max}`))),
+    legacyButtonsCallout(),
     m.xforms.map((x, xi) => xfCard(m, x, xi)));
 }
 
@@ -2537,7 +2605,11 @@ function xfCard(m, x, xi) {
         dbcSourcePicker(o, null, true)),
       o.srcBus !== XS_THIS_JS ? h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, ''),
         h('label', {}, 'stale after ', num(o, 'staleMs'), ' ms'),
-        h('label', {}, 'if missing or stale: ', sel(o, 'flags', [[0, 'drop the frame'], [1, 'skip this step']]))) : null];
+        h('label', {}, 'if missing or stale: ', h('select', { onchange: (ev) => { o.flags = (o.flags & ~(XF_KEEP | XF_ZERO)) | +ev.target.value; refresh(); } },
+          [[0, 'drop the frame'], [XF_KEEP, 'skip this step'], ...(o.kind === XO.COPY ? [[XF_ZERO, 'write 0 (e.g. released)']] : [])]
+            .map(([v, t]) => h('option', { value: v, selected: (o.flags & (XF_KEEP | XF_ZERO)) === v }, t)))),
+        o.kind === XO.COPY ? h('label', { title: 'A bit reads 1 if it was set in any source frame since this route last forwarded, so a press shorter than one frame still shows once. Only for bytes where each bit is one button.' },
+          h('input', { type: 'checkbox', checked: o.flags & XF_TAPS, onchange: (ev) => { o.flags = ev.target.checked ? o.flags | XF_TAPS : o.flags & ~XF_TAPS; refresh(); } }), ' catch short presses') : null) : null];
     if (o.kind === XO.SET_ID) body = h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'New ID'), idIn(o), chk(o, 'srcExt', '29-bit', true));
     else if (o.kind === XO.SET_LEN) body = h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'New length'), sel(o, 'value', [0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => [n, n + ' bytes'])), h('span', { class: 'muted' }, 'added bytes are 0'));
     else if (o.kind === XO.SET_FIELD) body = h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Field'), field(o, 'dst'),
@@ -2545,7 +2617,12 @@ function xfCard(m, x, xi) {
     else if (o.kind === XO.COPY) body = [source(),
       h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Math'),
         h('label', {}, 'out = raw × ', num(o, 'factor', 'num', { float: true })), h('label', {}, ' + ', num(o, 'offset', 'num', { float: true })), unitsHelper(o, null)),
-      h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Into field'), field(o, 'dst', true))];
+      h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Into field'), field(o, 'dst', true),
+        h('label', { title: 'Write only the bits set in this mask (hex); the field’s other bits keep the frame’s own value' },
+          h('input', { type: 'checkbox', checked: o.flags & XF_MASK, onchange: (ev) => { o.flags = ev.target.checked ? o.flags | XF_MASK : o.flags & ~XF_MASK; if (ev.target.checked && !o.value) o.value = 2 ** Math.min(o.dstLen, 31) - 1; full(); } }), ' only bits'),
+        o.flags & XF_MASK ? h('input', { class: 'byte mono', style: 'width:96px', title: 'Bit mask, hex', value: (o.value >>> 0).toString(16).toUpperCase(), oninput: (ev) => {
+          const v = parseHex(ev.target.value); ev.target.classList.toggle('bad', !Number.isFinite(v)); if (Number.isFinite(v)) { o.value = v | 0; refresh(); } } }) : null,
+        o.flags & XF_MASK ? h('span', { class: 'muted' }, 'hex') : null)];
     else if (o.kind === XO.COND) body = [source(),
       h('div', { class: 'toolbar', style: 'margin:6px 0 0' }, h('b', { style: 'width:110px' }, 'Forward if'), h('span', {}, 'value '),
         sel(o, 'cmp', XC_LABEL.map((t, i) => [i, t])), num(o, 'value', 'id', { signed: true }), h('span', { class: 'muted' }, `(${isHex() ? 'hex' : 'dec'}, raw value)`))];
@@ -2684,7 +2761,7 @@ const HELP = [
 <tr><td>29-bit</td><td>Extended ID. 0x123 as 11-bit and 0x123 as 29-bit are different frames.</td></tr>
 <tr><td>Direction</td><td>A → B, B → A or Both.</td></tr>
 <tr><td>Action</td><td>Pass forwards; Drop blocks. Use Drop rows to carve holes in a Pass range, or to block an ID the default would pass.</td></tr>
-<tr><td>Transform</td><td><i>Merge wheel buttons</i> (Buttons tab) or one of your transforms (Transforms tab).</td></tr>
+<tr><td>Transform</td><td>One of your transforms (Transforms tab). Older settings may show <i>Merge wheel buttons (old)</i>, which can be converted.</td></tr>
 <tr><td>Min ms</td><td>Rate limit: forward at most once per this many ms. The newest data always wins, so the far side never holds stale data (a 100 Hz frame with Min ms 100 arrives at 10 Hz).</td></tr>
 <tr><td>On change</td><td>Forward only when the data differs from what was last sent.</td></tr>
 <tr><td>Heartbeat</td><td>With On change: resend unchanged data at least this often so receivers don’t time out.</td></tr>
@@ -2704,11 +2781,19 @@ const HELP = [
 <tr><td>Forward only if…</td><td>Compares a field’s raw value with a number (=, ≠, &lt;, ≤, &gt;, ≥, has all these bits, has any of these bits). If false the frame is dropped.</td></tr>
 <tr><td>Rolling counter</td><td>Writes a counter that steps for every forwarded frame and wraps at the field size.</td></tr>
 </table>
-<p><b>Other-frame sources</b> have a stale time: if that frame is missing or older, the step either drops the frame or is skipped (your choice). The isolator caches the source automatically, and Bus A’s hardware filter lets it through.</p>
+<p><b>Other-frame sources</b> have a stale time. If that frame is missing or older, the step either drops the frame, is skipped, or (copy steps) writes 0, which reads as “released” for buttons. The isolator caches the source automatically, and Bus A’s hardware filter lets it through.</p>
+<p><b>Copy step options</b> (firmware 2.7+):</p>
+<ul>
+<li><b>only bits</b> + a hex mask: only those bits of the field are written; the others keep the frame’s own value. For example, field = byte 4, mask <code>0F</code> copies the low four bits.</li>
+<li><b>catch short presses:</b> a bit reads 1 if it was set in <i>any</i> source frame since this route last forwarded, so a button pressed and released between two forwarded frames still shows once. It is not a latch. Use it only where each bit is one button, because it ORs values together. <i>Try it</i> uses the latest source frame only.</li>
+</ul>
+<h4>Merge bytes from another frame (formerly the Buttons tab)</h4>
+<p><b>+ Merge bytes from another frame</b> starts a transform that sets the length to 8 and copies whole bytes from another frame, reading 0 when that frame is stale. Add one copy step per byte (up to 5). This is how steering wheel buttons are merged into the ABS frame: wheel 0x178 bytes 7 and 8 → ABS 0x2B2 bytes 4 and 5, with a 250 ms stale time. One difference from the old Buttons map: until the source frame has been seen once since start-up, the copied bytes read 0 instead of passing the original bytes through.</p>
 <p><b>Try it</b> runs a test frame through the transform with exactly the firmware’s math and shows what would be sent, or which step drops it and why.</p>
 <p>Notes: steps that read “this frame” see it as received, before any step. A rolling counter on a rate-limited route skips the values the limiter holds back. Deleting or reordering transforms renumbers the routes that use them.</p>` },
 
-  { id: 'buttons', group: 'Tabs', title: 'Buttons tab (wheel merge)', html: `
+  { id: 'buttons', group: 'Tabs', title: 'Buttons tab (old wheel merge)', html: `
+<div class="callout warn"><b>Replaced by Transforms.</b> The Buttons tab only appears while settings still use the old built-in <i>Merge wheel buttons</i>. Transforms → <b>Convert to a transform</b> turns it into an ordinary transform that does the same (firmware 2.7+), and the tab goes away. New setups: Transforms → <b>+ Merge bytes from another frame</b>.</div>
 <p>Copies bytes of the steering wheel frame into another frame, so the ECU can read extra buttons without another receive slot. Routes that use the <b>Merge wheel buttons</b> transform get these bytes (by default the ABS frame 0x2B2).</p>
 <ul>
 <li><b>Wheel byte → Into byte:</b> which byte goes where (bytes numbered 1–8). <b>Bit mask</b> (hex): which bits are copied; the others keep the original frame’s value.</li>

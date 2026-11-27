@@ -8,7 +8,7 @@ This is the same help that is built into the config tool (press <kbd>?</kbd> on 
 
 **Basics:** [Getting started](#getting-started) · [How the isolator works](#how-the-isolator-works)
 
-**Tabs:** [Status tab](#status-tab) · [Routes tab](#routes-tab) · [Transforms tab](#transforms-tab) · [Buttons tab (wheel merge)](#buttons-tab-wheel-merge) · [Generated frames tab](#generated-frames-tab) · [Bus settings tab](#bus-settings-tab) · [ID sniffer tab](#id-sniffer-tab) · [Frame monitor and bit analyzer](#frame-monitor-and-bit-analyzer) · [Graph tab](#graph-tab) · [Record & replay tab](#record--replay-tab) · [Send test frames tab](#send-test-frames-tab) · [DBC files tab](#dbc-files-tab)
+**Tabs:** [Status tab](#status-tab) · [Routes tab](#routes-tab) · [Transforms tab](#transforms-tab) · [Buttons tab (old wheel merge)](#buttons-tab-old-wheel-merge) · [Generated frames tab](#generated-frames-tab) · [Bus settings tab](#bus-settings-tab) · [ID sniffer tab](#id-sniffer-tab) · [Frame monitor and bit analyzer](#frame-monitor-and-bit-analyzer) · [Graph tab](#graph-tab) · [Record & replay tab](#record--replay-tab) · [Send test frames tab](#send-test-frames-tab) · [DBC files tab](#dbc-files-tab)
 
 **How to:** [How-to recipes](#how-to-recipes) · [Updating the firmware](#updating-the-firmware) · [Recovery and backups](#recovery-and-backups)
 
@@ -76,7 +76,7 @@ The route table decides what crosses between the buses. **The first matching row
 | 29-bit | Extended ID. 0x123 as 11-bit and 0x123 as 29-bit are different frames. |
 | Direction | A → B, B → A or Both. |
 | Action | Pass forwards; Drop blocks. Use Drop rows to carve holes in a Pass range, or to block an ID the default would pass. |
-| Transform | *Merge wheel buttons* (Buttons tab) or one of your transforms (Transforms tab). |
+| Transform | One of your transforms (Transforms tab). Older settings may show *Merge wheel buttons (old)*, which can be converted. |
 | Min ms | Rate limit: forward at most once per this many ms. The newest data always wins, so the far side never holds stale data (a 100 Hz frame with Min ms 100 arrives at 10 Hz). |
 | On change | Forward only when the data differs from what was last sent. |
 | Heartbeat | With On change: resend unchanged data at least this often so receivers don’t time out. |
@@ -100,14 +100,25 @@ A transform rewrites the frames a route forwards. It is a list of up to 6 steps 
 | Forward only if… | Compares a field’s raw value with a number (=, ≠, <, ≤, >, ≥, has all these bits, has any of these bits). If false the frame is dropped. |
 | Rolling counter | Writes a counter that steps for every forwarded frame and wraps at the field size. |
 
-**Other-frame sources** have a stale time: if that frame is missing or older, the step either drops the frame or is skipped (your choice). The isolator caches the source automatically, and Bus A’s hardware filter lets it through.
+**Other-frame sources** have a stale time. If that frame is missing or older, the step either drops the frame, is skipped, or (copy steps) writes 0, which reads as “released” for buttons. The isolator caches the source automatically, and Bus A’s hardware filter lets it through.
+
+**Copy step options** (firmware 2.7+):
+
+- **only bits** + a hex mask: only those bits of the field are written; the others keep the frame’s own value. For example, field = byte 4, mask `0F` copies the low four bits.
+- **catch short presses:** a bit reads 1 if it was set in *any* source frame since this route last forwarded, so a button pressed and released between two forwarded frames still shows once. It is not a latch. Use it only where each bit is one button, because it ORs values together. *Try it* uses the latest source frame only.
+
+### Merge bytes from another frame (formerly the Buttons tab)
+
+**+ Merge bytes from another frame** starts a transform that sets the length to 8 and copies whole bytes from another frame, reading 0 when that frame is stale. Add one copy step per byte (up to 5). This is how steering wheel buttons are merged into the ABS frame: wheel 0x178 bytes 7 and 8 → ABS 0x2B2 bytes 4 and 5, with a 250 ms stale time. One difference from the old Buttons map: until the source frame has been seen once since start-up, the copied bytes read 0 instead of passing the original bytes through.
 
 **Try it** runs a test frame through the transform with exactly the firmware’s math and shows what would be sent, or which step drops it and why.
 
 Notes: steps that read “this frame” see it as received, before any step. A rolling counter on a rate-limited route skips the values the limiter holds back. Deleting or reordering transforms renumbers the routes that use them.
 
 
-## Buttons tab (wheel merge)
+## Buttons tab (old wheel merge)
+
+> **Replaced by Transforms.** The Buttons tab only appears while settings still use the old built-in *Merge wheel buttons*. Transforms → **Convert to a transform** turns it into an ordinary transform that does the same (firmware 2.7+), and the tab goes away. New setups: Transforms → **+ Merge bytes from another frame**.
 
 Copies bytes of the steering wheel frame into another frame, so the ECU can read extra buttons without another receive slot. Routes that use the **Merge wheel buttons** transform get these bytes (by default the ABS frame 0x2B2).
 
