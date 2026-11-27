@@ -6,16 +6,22 @@
 <title>CAN Isolator Config</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --ink: #1d232b; --muted: #5d6874; --line: #dde1e6;
-    --accent: #2f6fd6; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #b7791f; --bad: #c53030;
-    --ok-bg: #e6f4ec; --warn-bg: #fdf3e1; --bad-bg: #fbe9e9; --chip: #eef1f4; --input: #ffffff;
+    --bg: #eef1f5; --panel: #ffffff; --ink: #111827; --muted: #4a5563; --line: #d3d9e1;
+    --accent: #1d5bd6; --accent-ink: #ffffff; --link: #1d5bd6; --ok: #157a42; --warn: #9a5b00; --bad: #b42323;
+    --ok-bg: #e3f4ea; --warn-bg: #fdf0d8; --bad-bg: #fbe5e5; --chip: #e9edf2; --input: #ffffff;
+    --th-bg: #f4f6f9; --hdr-bg: linear-gradient(180deg, #ffffff 0%, #f3f6fb 100%);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .05);
+    --busA: #2f6fd6; --busB: #d9822b; --iso: #a3263f;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14171b; --panel: #1c2026; --ink: #e5e9ee; --muted: #9aa5b1; --line: #2e343c;
-      --accent: #5b93ec; --accent-ink: #0d1117; --ok: #4cc283; --warn: #e0a548; --bad: #f07272;
-      --ok-bg: #173325; --warn-bg: #3a2c14; --bad-bg: #3d1c1c; --chip: #262b32; --input: #161a1f;
+      --bg: #0e1115; --panel: #181c22; --ink: #f1f4f8; --muted: #aeb9c6; --line: #323943;
+      --accent: #6ea2ff; --accent-ink: #0b1220; --link: #8fb8ff; --ok: #5fd394; --warn: #f0b45a; --bad: #ff8a8a;
+      --ok-bg: #15301f; --warn-bg: #3a2a10; --bad-bg: #3d1a1a; --chip: #262c35; --input: #11151a;
+      --th-bg: #1d222a; --hdr-bg: linear-gradient(180deg, #1b2029 0%, #161a20 100%);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+      --busA: #5b93ec; --busB: #c97f2e; --iso: #c94a63;
     }
   }
   * { box-sizing: border-box; }
@@ -128,7 +134,6 @@
   .help-diagram { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin: 10px 0; max-width: 860px; }
   .hd-box { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 150px; font-weight: 600; background: var(--panel); }
   .hd-box small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
-  .hd-iso { border-color: var(--accent); }
   .hd-box { flex: 1; min-width: 0; }
   .hd-arrow { display: flex; align-items: center; font-size: 22px; color: var(--accent); }
   .help-bits { display: flex; gap: 28px; flex-wrap: wrap; margin: 8px 0; }
@@ -165,13 +170,77 @@
   svg.chart .series { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
   svg.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
   svg.chart .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  :root { --s1: #2f6fd6; --s2: #d9822b; }
+  @media (prefers-color-scheme: dark) { :root { --s1: #5b93ec; --s2: #c97f2e; } }
+  .legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); margin-bottom: 2px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  svg.chart .dlabel { fill: var(--ink); font-size: 11.5px; font-family: system-ui, sans-serif; }
+  .chg-step { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  table.chgbits { width: auto; border-collapse: separate; border-spacing: 2px; }
+  table.chgbits th { border: none; padding: 0 6px 0 0; font-weight: 500; }
+  table.chgbits td.cb { width: 22px; height: 20px; text-align: center; font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--line); border-radius: 3px; padding: 0; color: var(--muted); }
+  table.chgbits td.cb.on { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--ink); font-weight: 700; }
+  .graph-card { padding: 12px 16px; }
+  .graph-now { font-variant-numeric: tabular-nums; font-size: 16px; }
+  dialog#reviewDlg { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px 20px; width: min(760px, 92vw); max-height: 85vh; overflow: auto; }
+  dialog#reviewDlg::backdrop { background: rgba(0,0,0,.35); }
+  dialog#reviewDlg h2 { margin: 0 0 6px; font-size: 17px; }
+  .rv-group h3 { font-size: 13.5px; margin: 12px 0 4px; }
+  .rv-group ul { margin: 0; padding-left: 0; list-style: none; }
+  .rv-group li { padding: 3px 0 3px 4px; font-size: 13.5px; }
+  .rv-mark { display: inline-block; width: 16px; font-weight: 700; font-family: var(--mono); }
+  .rv-add .rv-mark { color: var(--ok); } .rv-del .rv-mark { color: var(--bad); } .rv-chg .rv-mark { color: var(--warn); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .tip { position: absolute; background: var(--ink); color: var(--bg); font-size: 12px; padding: 3px 8px; border-radius: 4px; pointer-events: none; white-space: nowrap; }
+  /* ---- theme ---- */
+  a { color: var(--link); text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header { background: var(--hdr-bg); border-top: 3px solid var(--accent); }
+  header h1 { display: flex; align-items: center; gap: 9px; font-size: 16.5px; letter-spacing: -.01em; }
+  header h1 svg { flex: none; }
+  nav button:hover { color: var(--ink); background: var(--chip); }
+  nav button.active { color: var(--accent); border-bottom-width: 3px; }
+  .panel { box-shadow: var(--shadow); }
+  .panel h2 { font-size: 15.5px; font-weight: 650; }
+  th { background: var(--th-bg); }
+  button.primary { box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  button:hover:not(:disabled):not(.primary) { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+  .badge { font-weight: 600; }
+  .actionbar { box-shadow: 0 -2px 10px rgba(0,0,0,.08); }
+  .panel.bus-a { border-left: 4px solid var(--busA); }
+  .panel.bus-b { border-left: 4px solid var(--busB); }
+  .busdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+  .busdot.a { background: var(--busA); } .busdot.b { background: var(--busB); }
+  .kv div b { color: var(--ink); }
+  .empty { padding: 48px 20px; }
+  .welcome { max-width: 760px; margin: 0 auto; text-align: center; }
+  .welcome h2 { font-size: 24px; margin: 18px 0 6px; letter-spacing: -.01em; }
+  .welcome .lead { color: var(--muted); font-size: 15px; margin: 0 0 22px; }
+  .welcome .diagram { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0 26px; flex-wrap: wrap; }
+  .welcome .node { padding: 12px 18px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); font-weight: 650; min-width: 150px; color: var(--ink); }
+  .welcome .node small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+  .welcome .node.a { border-top: 4px solid var(--busA); } .welcome .node.b { border-top: 4px solid var(--busB); }
+  .welcome .node.iso { border-top: 4px solid var(--iso); background: color-mix(in srgb, var(--iso) 7%, var(--panel)); }
+  .hd-a { border-top: 4px solid var(--busA); } .hd-b { border-top: 4px solid var(--busB); }
+  .hd-iso { border-color: var(--iso); border-top: 4px solid var(--iso); background: color-mix(in srgb, var(--iso) 7%, var(--panel)); }
+  .welcome .arrow { color: var(--muted); font-size: 22px; }
+  .welcome .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: left; margin: 0 0 24px; }
+  @media (max-width: 720px) { .welcome .steps { grid-template-columns: 1fr; } }
+  .welcome .step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; color: var(--ink); font-size: 13.5px; box-shadow: var(--shadow); }
+  .welcome .step b { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .welcome .num { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12px; align-items: center; justify-content: center; }
+  .welcome .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .welcome .actions button { padding: 9px 18px; font-size: 14.5px; }
+  .welcome .hint { margin: 6px 0; }
+  .welcome .newhere { font-size: 14.5px; font-weight: 600; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>CAN Isolator</h1>
+  <h1><svg width="26" height="20" viewBox="0 0 26 20" aria-hidden="true"><rect x="1" y="3" width="7" height="14" rx="2" fill="var(--busA)"/><rect x="18" y="3" width="7" height="14" rx="2" fill="var(--busB)"/><path d="M13 4l5 6-5 6-5-6z" fill="var(--iso)"/></svg>CAN Isolator</h1>
   <span id="connPill" class="pill"><span class="dot"></span><span>Not connected</span></span>
   <span id="cfgPill" class="pill" hidden></span>
   <span id="fwInfo" class="muted" style="font-size:12.5px"></span>
@@ -189,6 +258,8 @@
   <button data-tab="settings">Bus settings</button>
   <button data-tab="sniffer">ID sniffer</button>
   <button data-tab="monitor">Frame monitor</button>
+  <button data-tab="graph">Graph</button>
+  <button data-tab="replay">Record &amp; replay</button>
   <button data-tab="send">Send test frames</button>
   <button data-tab="dbc">DBC files</button>
   <button data-tab="help" class="help-tab" title="Help for the tab you're on (keyboard: ?)">? Help</button>
@@ -200,6 +271,7 @@
   <button id="btnSend" class="primary" title="Run these settings on the board now (RAM only - a power cycle goes back to the saved settings)">Send to board</button>
   <button id="btnSave" title="Store the settings in the board's flash so they survive power-off">Save to board</button>
   <button id="btnDiscard" title="Throw away edits made in this page and reload the board's settings">Discard edits</button>
+  <button id="btnReview" title="List what your edits change compared with what the board is running">Review changes</button>
   <details class="more" id="moreMenu">
     <summary>More…</summary>
     <div class="menu">
@@ -218,6 +290,7 @@
 </div>
 <input type="file" id="fileInput" accept=".json,application/json" hidden>
 <div class="toast" id="toast"></div>
+<dialog id="reviewDlg"></dialog>
 
 <script>
 'use strict';
@@ -227,7 +300,7 @@
 // ===========================================================================
 const link = {
   port: null, reader: null, writer: null, readClosed: null,
-  waiter: null, chain: Promise.resolve(), busy: 0,
+  waiter: null, chain: Promise.resolve(), busy: 0, bg: 0,
 };
 const enc = new TextEncoder();
 
@@ -286,7 +359,9 @@ async function requestOk(line, timeoutMs) {
 
 const cmd = {
   hello: () => locked(() => request('hello', (o) => o.t === 'hello')),
-  get:   () => locked(() => request('get', (o) => o.t === 'cfg')),
+  get:   () => locked(() => request('get', (o) => o.t === 'cfg' && o.which !== 'saved')),
+  getSaved: () => locked(() => request('get saved', (o) => o.t === 'cfg' && o.which === 'saved', 4000)),
+  ev:    () => locked(() => request('ev', (o) => o.t === 'ev')),
   stat:  () => locked(() => request('stat', (o) => o.t === 'stat')),
   sniff: () => locked(() => {
     const got = [];
@@ -298,7 +373,7 @@ const cmd = {
 
 async function connect() {
   if (!('serial' in navigator)) {
-    toast('This browser can’t use USB serial ports. Open this page in Google Chrome or Microsoft Edge (Safari and Firefox don’t support it). Double-click “Open Config Tool.command” to open it in Chrome.', true);
+    toast('This browser can’t use USB serial ports. Open this page in Google Chrome or Microsoft Edge (Safari and Firefox don’t support it). Double-click “Open Config Tool.command” (Mac) or “Open Config Tool.bat” (Windows) to open it in Chrome or Edge.', true);
     return;
   }
   let port;
@@ -332,6 +407,7 @@ async function openPort(port, quiet, keepEdits) {
     const h = await cmd.hello();
     if (h.proto !== 1) toast('This board speaks protocol ' + h.proto + '; this page expects 1. Some things may not work.', true);
     state.hello = h;
+    state.loadHist = []; state.events = null; state.evN = -1; state.stat = null;
     if (keepEdits && state.edit && state.editDirty) state.board = await cmd.get();
     else await reloadFromBoard();
     state.connected = true;
@@ -349,6 +425,9 @@ async function openPort(port, quiet, keepEdits) {
 
 async function disconnect() {
   stopPolling();
+  if (state.rp.running) { clearInterval(state.rp.timer); state.rp.running = false; }
+  if (state.rec.on) recStop();
+  if (state.chg.timer) { clearInterval(state.chg.timer); state.chg.timer = null; state.chg.phase = state.chg.base.size ? 'ready' : 'idle'; }
   const port = link.port;
   link.port = null;
   state.connected = false;
@@ -387,14 +466,22 @@ const state = {
   // test frames
   sendForm: { bus: 0, id: 0x123, ext: 0, len: 8, data: [0, 0, 0, 0, 0, 0, 0, 0], period: 100 },
   txpSlots: [null, null, null, null],
+  // status history (firmware 2.6+)
+  loadHist: [], events: null, evN: -1,
+  // "What changed?" in the sniffer
+  chg: { phase: 'idle', buses: 3, baseSecs: 10, t0: 0, base: new Map(), cur: null, tries: [], timer: null },
+  // record & replay
+  rec: { on: false, frames: [], lost: 0, wall0: 0, what: 3, useMon: false },
+  rp: { file: null, map: {}, speed: 1, loop: false, from: '', to: '', ids: '', idMode: 'only', running: false, status: null, timer: null },
+  graph: { sigs: [], window: 60, source: 'live' },
 };
-const MON_KEEP = 20000;          // frames kept in the page for the log and the analyzer
+const MON_KEEP = 100000;          // frames kept in the page for the log and the analyzer
 const WHERE = { 1: 'A RX', 2: 'B RX', 4: 'A TX', 8: 'B TX' };
 
 const DIR_LABEL = { 1: 'A → B', 2: 'B → A', 3: 'Both' };
 const XF_LABEL = { none: '—', mergeButtons: 'Merge wheel buttons' };
 const STATE_NAME = ['Active', 'Warning', 'Error passive', 'Bus-off'];
-const BUS_NAME = ['Bus A · noisy side', 'Bus B · MoTeC M1'];
+const BUS_NAME = ['Bus A · chassis side', 'Bus B · standalone ECU'];
 
 // board 'cfg' JSON -> page model
 function fromBoard(c) {
@@ -477,7 +564,8 @@ async function doAction(label, fn) {
   render();
 }
 
-async function actSend() {
+async function actSend(reviewed) {
+  if (reviewed !== true && !(await reviewForSend(false))) return;
   await doAction('Sending', async () => {
     const r = await uploadEdit();
     await reloadFromBoard();
@@ -486,6 +574,7 @@ async function actSend() {
 }
 
 async function actSave() {
+  if (!(await reviewForSave())) return;
   await doAction('Saving', async () => {
     if (state.editDirty) await uploadEdit();
     const r = await cmd.simple('save', 5000);
@@ -527,51 +616,46 @@ async function pollMon() {
   monPolling = true;
   try {
     let got = 0;
-    for (let i = 0; i < 6; i++) {                       // empty the board's buffer
-      const d = await locked(() => request('mon', (o) => o.t === 'mon'));
+    const max = state.rec.on ? 40 : 8;                // recording: empty the board's buffer faster
+    for (let i = 0; i < max; i++) {                    // empty the board's buffer
+      const d = await lockedBg(() => request('mon', (o) => o.t === 'mon'));
       state.monLost += d.lost;
+      const batch = [];
       for (const [t, where, id, ext, data] of d.f) {
         if (state.monT0 === null) state.monT0 = t;
-        state.monFrames.push({ t: ((t - state.monT0) >>> 0) / 10000, where, id, ext, data });
+        batch.push({ t: ((t - state.monT0) >>> 0) / 10000, where, id, ext, data });
       }
+      for (const f of batch) state.monFrames.push(f);
+      recPush(batch, d.lost);
       got += d.f.length;
-      if (!d.on) { state.monOn = false; toast('The board stopped the monitor (no requests for 5 s).', true); renderTab(false); break; }
+      if (!d.on) { state.monOn = false; recStop('The board stopped the monitor (no requests for 5 s), so recording stopped.'); toast('The board stopped the monitor (no requests for 5 s).', true); renderTab(false); break; }
       if (!d.more) break;
     }
-    if (state.monFrames.length > MON_KEEP) state.monFrames.splice(0, state.monFrames.length - MON_KEEP);
-    if (got && state.tab === 'monitor' && !state.monPaused) renderTab(true);
+    if (state.monFrames.length > MON_KEEP * 1.1) state.monFrames.splice(0, state.monFrames.length - MON_KEEP);
+    if (got && !state.monPaused && (state.tab === 'monitor' || state.tab === 'graph' || state.tab === 'replay')) renderTab(true);
   } catch (e) { /* missed poll */ }
   monPolling = false;
 }
 
+let statPolling = false;
 async function poll() {
-  if (!state.connected || link.busy) return;
+  if (!state.connected || link.busy - link.bg > 0 || statPolling) return;
+  statPolling = true;
   try {
     const s = await cmd.stat();
+    loadUpdate(s, state.stat);
     if (state.stat) {
       const dt = (s.up - state.stat.up) / 1000;
       if (dt > 0) state.rates = { dt, bus: s.bus.map((b, i) => rateObj(b, state.stat.bus[i], dt)),
                                   gen: s.gen.map((g, i) => ({ sent: (g.sent - (state.stat.gen[i]?.sent ?? g.sent)) / dt, nosrc: (g.nosrc - (state.stat.gen[i]?.nosrc ?? g.nosrc)) / dt })) };
     }
     state.stat = s;
-    if (state.sniffOn && state.tab === 'sniffer') {
-      const d = await cmd.sniff();
-      for (const o of d) {
-        const map = state.sniff[o.b];
-        const now = Date.now();
-        for (const [id, ext, count, len, data] of o.ids) {
-          const k = ext + ':' + id;
-          const e = map.get(k) || { id, ext, first: now };
-          e.hz = o.dt ? count * 1000 / o.dt : 0; e.len = len; e.data = data;
-          if (count) e.seen = now;
-          map.set(k, e);
-        }
-        state.sniffLost[o.b] = o.lost;
-      }
-    }
+    await evUpdate(s);
+    if (state.sniffOn && (state.tab === 'sniffer' || state.chg.phase === 'base' || state.chg.phase === 'act')) await sniffNow();
     if (state.tab === 'status' || state.tab === 'sniffer') renderTab(true);
     updateHeader();
   } catch (e) { /* a missed poll is fine */ }
+  statPolling = false;
 }
 
 function rateObj(b, p, dt) {
@@ -716,6 +800,7 @@ function updateHeader() {
   $('#btnSend').disabled = !c || !state.editDirty;
   $('#btnSave').disabled = !c || (!state.editDirty && !(b && b.dirty));
   $('#btnDiscard').disabled = !c || !state.editDirty;
+  $('#btnReview').disabled = !c || !state.editDirty;
   for (const id of ['btnRevert', 'btnDefaults', 'btnErase', 'btnReboot']) $('#' + id).disabled = !c;
   $('#actionMsg').textContent = busyLabel || (state.editDirty ? 'You have edits that are not on the board yet.' : '');
 }
@@ -738,7 +823,9 @@ function renderTab(live) {
   if (!state.edit) { if (!live) main.replaceChildren(emptyView()); return; }
   if (live) {
     // Live refresh: only redraw the parts that show board data, keep inputs intact.
-    if (state.tab === 'status') main.replaceChildren(statusView());
+    if (state.tab === 'status' && !chartHover) main.replaceChildren(statusView());
+    if (state.tab === 'graph' && !chartHover) { const w = $('#graphCharts'); if (w) w.replaceWith(graphCharts()); }
+    if (state.tab === 'replay') rpRefresh();
     if (state.tab === 'sniffer') { const w = $('#sniffBody'); if (w) w.replaceWith(sniffBody()); }
     if (state.tab === 'monitor' && !state.monPaused) monRefresh();
     if (state.tab === 'send') { const w = $('#txpSlots'); if (w) w.replaceWith(txpSlotsView()); }
@@ -748,7 +835,7 @@ function renderTab(live) {
     });
     return;
   }
-  const views = { status: statusView, routes: routesView, transforms: transformsView, buttons: buttonsView, settings: settingsView, generated: generatedView, sniffer: snifferView, monitor: monitorView, send: sendView, dbc: dbcView, firmware: firmwareView, help: helpView };
+  const views = { status: statusView, routes: routesView, transforms: transformsView, buttons: buttonsView, settings: settingsView, generated: generatedView, sniffer: snifferView, monitor: monitorView, send: sendView, dbc: dbcView, firmware: firmwareView, help: helpView, replay: replayView, graph: graphView };
   main.replaceChildren(views[state.tab]());
 }
 
@@ -756,19 +843,31 @@ function unsupportedView() {
   return h('div', { class: 'panel unsupported' },
     h('h2', {}, 'This browser can’t talk to the board'),
     h('p', {}, 'The tool uses Web Serial, which is available in Google Chrome and Microsoft Edge on a computer (not Safari or Firefox).'),
-    h('p', {}, 'On this Mac, double-click ', h('b', {}, 'Open Config Tool.command'), ' in the ConfigTool folder: it always opens the page in Chrome. Or right-click index.html → Open With → Google Chrome.'),
+    /Win/i.test(navigator.userAgentData?.platform || navigator.platform || '')
+      ? h('p', {}, 'On Windows, double-click ', h('b', {}, 'Open Config Tool.bat'), ' in the ConfigTool folder: it opens the page in Chrome, or Edge if Chrome isn’t installed. Or right-click index.html → Open with → Google Chrome / Microsoft Edge.')
+      : h('p', {}, 'On a Mac, double-click ', h('b', {}, 'Open Config Tool.command'), ' in the ConfigTool folder: it always opens the page in Chrome. Or right-click index.html → Open With → Google Chrome.'),
     h('p', { class: 'hint' }, 'Your settings and saved signals are stored per browser, so keep using the same one.'),
     h('p', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); openHelp('start'); } }, 'Read the help →')));
 }
 
 function emptyView() {
-  return h('div', { class: 'empty' },
+  const win = /Win/i.test(navigator.userAgentData?.platform || navigator.platform || '');
+  return h('div', { class: 'empty' }, h('div', { class: 'welcome' },
     h('h2', {}, 'Connect the isolator'),
-    h('p', {}, 'Plug the CANipulator into this computer with USB-C, then click Connect and pick the “USB JTAG/serial debug unit”.'),
-    h('p', {}, h('button', { class: 'primary', onclick: connect }, 'Connect'), ' ',
+    h('p', { class: 'lead' }, 'Set up routes, transforms and generated frames, and watch both CAN buses live.'),
+    h('div', { class: 'diagram', 'aria-hidden': 'true' },
+      h('div', { class: 'node a' }, 'Bus A', h('small', {}, 'chassis side')), h('span', { class: 'arrow' }, '⇄'),
+      h('div', { class: 'node iso' }, 'Isolator', h('small', {}, 'CANipulator · USB-C')), h('span', { class: 'arrow' }, '⇄'),
+      h('div', { class: 'node b' }, 'Bus B', h('small', {}, 'standalone ECU'))),
+    h('div', { class: 'steps' },
+      h('div', { class: 'step' }, h('b', {}, h('span', { class: 'num' }, '1'), 'Plug in'), 'Connect the CANipulator to this computer with a USB-C data cable.'),
+      h('div', { class: 'step' }, h('b', {}, h('span', { class: 'num' }, '2'), 'Close other tools'), 'Quit serial monitors (PlatformIO, Arduino IDE): only one program can use the port.'),
+      h('div', { class: 'step' }, h('b', {}, h('span', { class: 'num' }, '3'), 'Connect'),
+        win ? 'Click Connect and pick “USB Serial Device (COM…)” or “USB JTAG/serial debug unit”.' : 'Click Connect and pick “USB JTAG/serial debug unit”.')),
+    h('div', { class: 'actions' },
+      h('button', { class: 'primary', onclick: connect }, 'Connect'),
       h('button', { onclick: () => $('#fileInput').click() }, 'Open a settings file (offline)')),
-    h('p', { class: 'hint' }, 'Close any serial monitor (PlatformIO, Arduino IDE) first: only one program can use the port.'),
-    h('p', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); openHelp('start'); } }, 'New here? Read “Getting started” →')));
+    h('p', {}, h('a', { href: '#', class: 'newhere', onclick: (e) => { e.preventDefault(); openHelp('start'); } }, 'New here? Read “Getting started” →'))));
 }
 
 // ===========================================================================
@@ -783,15 +882,16 @@ function statusView() {
     const cls = b.st === 0 ? 'ok' : b.st === 1 ? 'warn' : 'bad';
     const rr = r?.bus[i] || {};
     const other = i === 0 ? 'B' : 'A';
-    return h('div', { class: 'panel' },
+    return h('div', { class: 'panel ' + (i ? 'bus-b' : 'bus-a') },
       h('div', { style: 'display:flex;align-items:center;gap:10px' },
-        h('h2', { style: 'margin:0' }, BUS_NAME[i]),
+        h('h2', { style: 'margin:0' }, h('span', { class: 'busdot ' + (i ? 'b' : 'a') }), BUS_NAME[i]),
         h('span', { class: 'badge ' + cls }, st),
         h('span', { class: 'muted', style: 'font-size:12.5px' }, `CAN${b.ch} connector · ${(state.board?.hw.baud[i] / 1000) || '?'} kbit/s`)),
       h('div', { class: 'kv' },
         kv('Received /s', fmtRate(rr.rx)), kv(`Forwarded → ${other} /s`, fmtRate(rr.fwd)),
         kv('Filtered /s', fmtRate(rr.filt)), kv('Rate-limited /s', fmtRate(rr.supp)),
         kv('Sent on this bus /s', fmtRate(rr.tx)),
+        has('load') ? kv('Bus load', state.loadHist.length ? state.loadHist[state.loadHist.length - 1].v[i].toFixed(1) + ' %' : '–') : null,
         kv('TX / RX errors', `${b.tec} / ${b.rec}`, true)),
       h('div', { class: 'kv' },
         kv('RX overflow', b.rxOvf, true, b.rxOvf > 0), kv('TX overflow', b.txOvf, true, b.txOvf > 0),
@@ -825,10 +925,12 @@ function statusView() {
         s.diag ? kv('Longest wait before routing', (s.diag.rxWaitUs / 1000).toFixed(1) + ' ms', true, s.diag.rxWaitUs > 5000) : null),
       s.diag ? h('p', { class: 'hint', style: 'margin:8px 0 0' }, `Since the last update (1 s). Slowest step: ${s.diag.step}` + (s.diag.cmd ? `; slowest command from this page: ${s.diag.cmd} (${(s.diag.cmdUs / 1000).toFixed(1)} ms)` : '') + '. These are about this page talking to the board; with nothing connected the loop runs undisturbed.') : null,
       hwfLine(s.hwf)),
+    loadPanel(),
+    eventsPanel(),
     h('div', { class: 'panel' },
       h('h2', {}, 'Generated frames'),
-      h('p', { class: 'hint' }, '“No source” counts periods skipped because the M1 frame the value comes from is missing. “M1 copy” is the M1’s own version, if it still sends one: while a frame is On, that copy is dropped and compared with the isolator’s.'),
-      h('table', {}, h('thead', {}, h('tr', {}, ['Frame', 'ID', 'Rate', 'State', 'Sent /s', 'No source /s', 'Isolator data', 'M1 copy', 'Check'].map(t => h('th', {}, t)))),
+      h('p', { class: 'hint' }, '“No source” counts periods skipped because the frame the value comes from is missing. “ECU copy” is the ECU’s own version, if it still sends one: while a frame is On, that copy is dropped and compared with the isolator’s.'),
+      h('table', {}, h('thead', {}, h('tr', {}, ['Frame', 'ID', 'Rate', 'State', 'Sent /s', 'No source /s', 'Isolator data', 'ECU copy', 'Check'].map(t => h('th', {}, t)))),
         h('tbody', {}, gen))));
 }
 
@@ -1010,20 +1112,20 @@ function settingsView() {
   return h('div', {},
     h('div', { class: 'panel' },
       h('h2', {}, 'Buses'),
-      h('div', { class: 'field' }, h('label', {}, 'Bus A (noisy side) bit rate'), h('div', {}, baudSel(0), restart(hw && m.baud[0] !== hw.baud[0]))),
-      h('div', { class: 'field' }, h('label', {}, 'Bus B (MoTeC M1) bit rate'), h('div', {}, baudSel(1), restart(hw && m.baud[1] !== hw.baud[1]))),
+      h('div', { class: 'field' }, h('label', {}, 'Bus A (chassis side) bit rate'), h('div', {}, baudSel(0), restart(hw && m.baud[0] !== hw.baud[0]))),
+      h('div', { class: 'field' }, h('label', {}, 'Bus B (standalone ECU) bit rate'), h('div', {}, baudSel(1), restart(hw && m.baud[1] !== hw.baud[1]))),
       h('div', { class: 'field' }, h('label', {}, 'Connectors'),
         h('div', {}, yesno(m.swap, v => m.swap = v, 'Swapped: Bus A on CAN1, Bus B on CAN0', 'Normal: Bus A on CAN0, Bus B on CAN1'), restart(hw && m.swap !== hw.swap)),
-        h('p', { class: 'hint' }, 'Only the physical connector changes; A is always the noisy side and B the M1.'))),
+        h('p', { class: 'hint' }, 'Only the physical connector changes; A is always the chassis side and B the ECU.'))),
     h('div', { class: 'panel' },
       h('h2', {}, 'IDs not in the route table'),
-      h('div', { class: 'field' }, h('label', {}, 'A → B (noisy → M1)'), h('div', {}, yesno(m.def[0], v => m.def[0] = v, 'Pass', 'Drop (whitelist)')),
-        h('p', { class: 'hint' }, 'Drop = only routed IDs reach the M1. This is what protects the M1 from the noisy bus.')),
-      h('div', { class: 'field' }, h('label', {}, 'B → A (M1 → noisy)'), h('div', {}, yesno(m.def[1], v => m.def[1] = v, 'Pass', 'Drop (whitelist)')),
-        h('p', { class: 'hint' }, 'Pass = every M1 frame reaches the noisy bus, as it did before the isolator.'))),
+      h('div', { class: 'field' }, h('label', {}, 'A → B (chassis → ECU)'), h('div', {}, yesno(m.def[0], v => m.def[0] = v, 'Pass', 'Drop (whitelist)')),
+        h('p', { class: 'hint' }, 'Drop = only routed IDs reach the ECU. This is what protects the ECU from the chassis bus.')),
+      h('div', { class: 'field' }, h('label', {}, 'B → A (ECU → chassis)'), h('div', {}, yesno(m.def[1], v => m.def[1] = v, 'Pass', 'Drop (whitelist)')),
+        h('p', { class: 'hint' }, 'Pass = every ECU frame reaches the chassis bus, as it did before the isolator.'))),
     h('div', { class: 'panel' },
       h('h2', {}, 'Hardware filter on Bus A'),
-      h('div', { class: 'field' }, h('label', {}, 'Filter the noisy side'),
+      h('div', { class: 'field' }, h('label', {}, 'Filter the chassis side'),
         h('div', {}, yesno(m.hwFilterA ?? 1, v => m.hwFilterA = v, 'On (recommended)', 'Off')),
         h('p', { class: 'hint' }, 'The CAN controller itself rejects Bus A frames the isolator has no use for, so they cost no CPU time. Worked out from the route table automatically: it passes the IDs of A → B routes, the steering wheel frame and any generated-frame source on Bus A. ',
           'It is only used while unrouted A → B IDs are dropped and nothing needed from Bus A is 29-bit (in that mode the hardware rejects every 29-bit frame). It opens by itself while the sniffer or monitor captures Bus A. Frames it rejects are not counted in Bus A’s “received” numbers.'))),
@@ -1051,6 +1153,7 @@ function snifferView() {
       h('div', { class: 'toolbar' },
         h('button', { class: state.sniffOn ? '' : 'primary', disabled: !state.connected, onclick: toggleSniff }, state.sniffOn ? 'Stop' : 'Start'),
         h('button', { onclick: () => { state.sniff = [new Map(), new Map()]; renderTab(false); } }, 'Clear'))),
+    chgPanel(),
     sniffBody());
 }
 
@@ -1074,8 +1177,8 @@ function sniffBody() {
           onclick: () => { addRoute({ first: e.id, ext: e.ext, dir: bus === 0 ? 1 : 2 }); toast(`Added row for ${fmtId(e.id, e.ext)} (${bus === 0 ? 'A → B' : 'B → A'}). Send to board to use it.`); renderTab(true); } }, '+ route') : null),
         h('td', {}, h('button', { class: 'small', title: 'Capture this ID in the frame monitor and analyze its bits', onclick: () => monitorId(bus, e.id, e.ext) }, 'monitor')));
     });
-    wrap.append(h('div', { class: 'panel' },
-      h('h2', {}, BUS_NAME[bus]),
+    wrap.append(h('div', { class: 'panel ' + (bus ? 'bus-b' : 'bus-a') },
+      h('h2', {}, h('span', { class: 'busdot ' + (bus ? 'b' : 'a') }), BUS_NAME[bus]),
       h('p', { class: 'hint' }, `${list.length} IDs` + (state.sniffLost[bus] ? ` · ${state.sniffLost[bus]} frames from IDs past the 200-ID limit` : '')),
       h('div', { class: 'sniff-wrap' },
         h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'ID'), h('th', {}, 'Message'), h('th', { class: 'num' }, 'Hz'), h('th', { class: 'num' }, 'Len'), h('th', {}, 'Data'), h('th', {}, 'Route'), h('th', {}, ''), h('th', {}, ''))),
@@ -1086,7 +1189,10 @@ function sniffBody() {
 
 async function toggleSniff() {
   try {
-    if (state.sniffOn) { await cmd.simple('sniff off'); state.sniffOn = false; }
+    if (state.sniffOn) {
+      if (state.chg.phase === 'base' || state.chg.phase === 'act') { toast('Finish “What changed?” first (it uses the sniffer).', true); return; }
+      await cmd.simple('sniff off'); state.sniffOn = false;
+    }
     else { await cmd.simple('sniff on'); state.sniffOn = true; state.sniff = [new Map(), new Map()]; }
   } catch (e) { toast(e.message, true); }
   renderTab(false);
@@ -1126,6 +1232,7 @@ async function monStart() {
 async function monStop() {
   try { await cmd.simple('mon off'); } catch {}
   state.monOn = false;
+  if (state.rec.on) recStop('Recording stopped with the monitor.');
   renderTab(false);
 }
 
@@ -1586,7 +1693,7 @@ function sendView() {
       h('p', { class: 'hint' }, 'Puts a frame straight onto a bus, bypassing the route table. Useful on the bench, or to check how a device reacts. Repeating frames stop by themselves if this page closes or the cable is pulled (5 s).'),
       h('div', { class: 'field' }, h('label', {}, 'Send on'),
         h('div', {}, h('select', { onchange: (e) => f.bus = +e.target.value },
-          h('option', { value: 0, selected: f.bus === 0 }, 'Bus A · noisy side'), h('option', { value: 1, selected: f.bus === 1 }, 'Bus B · MoTeC M1')))),
+          h('option', { value: 0, selected: f.bus === 0 }, 'Bus A · chassis side'), h('option', { value: 1, selected: f.bus === 1 }, 'Bus B · standalone ECU')))),
       h('div', { class: 'field' }, h('label', {}, `ID (${isHex() ? 'hex' : 'dec'})`),
         h('div', {}, idIn, ' ', h('label', {}, h('input', { type: 'checkbox', checked: f.ext, onchange: (e) => { f.ext = e.target.checked ? 1 : 0; rerender(); } }), ' 29-bit'))),
       h('div', { class: 'field' }, h('label', {}, 'Length'),
@@ -1730,7 +1837,7 @@ function generatedView() {
     h('div', { class: 'panel' },
       h('h2', {}, 'Frames the isolator builds'),
       h('p', { class: 'hint' }, 'Each frame is sent on a timer: constant bytes, with up to 4 fields written over them. A field is either copied from another frame (rescaled: out = raw × factor + offset, rounded and clamped to the field) or a rolling counter. ',
-        'A frame is only sent while all its source frames are fresh, so it stops when the source ECU stops. While a frame is on, a frame with the same ID arriving on the other bus (the M1’s own copy) is dropped.'),
+        'A frame is only sent while all its source frames are fresh, so it stops when the source ECU stops. While a frame is on, a frame with the same ID arriving on the other bus (the ECU’s own copy) is dropped.'),
       h('p', { class: 'hint', style: 'margin:0' }, 'Bit numbers follow DBC files: bit = byte × 8 + bit-in-byte. Intel fields start at their lowest bit and count up; Motorola fields start at their highest bit and continue into the next byte’s bit 7. Signals you saved in the bit analyzer can be used as sources.'),
       h('div', { class: 'toolbar', style: 'margin:12px 0 0' },
         h('button', { disabled: m.gens.length >= max, onclick: () => { m.gens.push(newGen()); markDirty(); renderTab(false); } }, '+ Add generated frame'),
@@ -2049,7 +2156,7 @@ function dbcView() {
     h('td', {}, f.name),
     h('td', { class: 'num' }, f.db.count), h('td', { class: 'num' }, f.db.signals),
     h('td', {}, h('select', { onchange: (e) => { f.bus = +e.target.value; dbcSave(); renderTab(false); } },
-      [[-1, 'Either bus'], [0, 'Bus A · noisy side'], [1, 'Bus B · MoTeC M1']].map(([v, t]) => h('option', { value: v, selected: f.bus === v }, t)))),
+      [[-1, 'Either bus'], [0, 'Bus A · chassis side'], [1, 'Bus B · standalone ECU']].map(([v, t]) => h('option', { value: v, selected: f.bus === v }, t)))),
     h('td', {}, h('button', { class: 'small', disabled: i === 0, title: 'Earlier files win when two define the same ID', onclick: () => { [dbcState.files[i - 1], dbcState.files[i]] = [dbcState.files[i], dbcState.files[i - 1]]; dbcSave(); renderTab(false); } }, '↑'),
       ' ', h('button', { class: 'small danger', onclick: () => { if (confirm(`Remove ${f.name}?`)) { dbcState.files.splice(i, 1); dbcSave(); renderTab(false); } } }, 'Remove'))));
 
@@ -2080,7 +2187,7 @@ function dbcView() {
       h('h2', {}, 'DBC files'),
       h('p', { class: 'hint' }, 'Load CAN database files (.dbc) so the sniffer, monitor and bit analyzer show message and signal names and decoded values, and so generated-frame sources can be picked by name. Files are kept in this browser; nothing is sent to the board. Set which bus a file describes so IDs used differently on the two buses don’t get mixed up.'),
       h('div', { class: 'toolbar' }, h('button', { class: 'primary', onclick: () => fileIn.click() }, 'Load .dbc files…'), fileIn,
-        h('span', { class: 'muted' }, 'For example: M1 General 0x640 0x650 0x670 Ver5.dbc, M1_Cruise_0x661_v1, ZestekWheel DBC.dbc')),
+        h('span', { class: 'muted' }, 'For example: your ECU’s CAN message definitions, a steering wheel or dash DBC')),
       dbcState.files.length ? h('table', {}, h('thead', {}, h('tr', {}, ['On', 'File', 'Messages', 'Signals', 'Describes', ''].map(t => h('th', {}, t)))), h('tbody', {}, rows))
                             : h('p', { class: 'muted' }, 'No files loaded.')),
     dbcState.files.length ? h('div', { class: 'panel' },
@@ -2526,33 +2633,34 @@ const HELP = [
   { id: 'start', group: 'Basics', title: 'Getting started', html: `
 <p>This page sets up and watches the CAN isolator (TechOverflow CANipulator) over its USB-C cable. Everything runs in this page: nothing is installed and nothing goes to the internet.</p>
 <ol>
-<li><b>Use Chrome or Edge.</b> Safari and Firefox can’t talk to USB serial devices. On this Mac, double-click <code>Open Config Tool.command</code> in the ConfigTool folder; it always opens the page in Chrome.</li>
+<li><b>Use Chrome or Edge</b> on a Mac, Windows or Linux computer. Safari and Firefox can’t talk to USB serial devices, and phones and tablets can’t either. In the ConfigTool folder, double-click <code>Open Config Tool.command</code> (Mac) or <code>Open Config Tool.bat</code> (Windows): it opens the page in Chrome, or Edge if Chrome isn’t installed.</li>
 <li><b>Close other serial programs</b> (PlatformIO monitor, Arduino IDE serial monitor). Only one program can use the port at a time.</li>
-<li>Click <b>Connect</b> and choose <b>USB JTAG/serial debug unit</b>.</li>
+<li>Click <b>Connect</b> and choose <b>USB JTAG/serial debug unit</b>. On Windows it may be listed as <b>USB Serial Device (COM…)</b>; it’s the only port the list offers.</li>
 <li>Start on the <b>Status</b> tab: both buses should say <i>Active</i>, and the received counts should move when the car is on.</li>
 </ol>
 <div class="callout"><b>Changing settings safely.</b> <b>Send to board</b> runs your edits straight away, but only in memory: a power cycle goes back to the saved settings. Try a change, check it, then <b>Save to board</b> to keep it. If something goes wrong, <b>More… → Board: go back to saved settings</b> undoes it instantly.</div>
+<p><b>Save to board</b> first lists exactly what will change compared with the settings saved on the board (routes added, removed or changed, bus settings, generated frames, transforms), so you can cancel if something is unexpected. <b>Review changes</b> shows the same list for your unsent edits; tick “Also show this before every Send to board” if you want it on every Send too.</p>
 <p>The coloured label at the top tells you where the board stands: <i>running its saved settings</i>, <i>running unsaved settings (lost at power-off)</i>, or <i>restart needed</i> (bit rate or connector changes only take effect after Save + restart).</p>
 <p>Press <kbd>?</kbd> on any tab, or click <b>? Help</b>, to jump to the help for that tab.</p>` },
 
   { id: 'concepts', group: 'Basics', title: 'How the isolator works', html: `
 <p>The isolator sits between two separate CAN networks and decides, frame by frame, what crosses:</p>
 <div class="help-diagram">
-  <div class="hd-box">Bus A<small>noisy side: ABS, wheel, gauge, cluster…</small></div>
+  <div class="hd-box hd-a">Bus A<small>chassis side: ABS, wheel, gauges, cluster…</small></div>
   <div class="hd-arrow">⇄</div>
   <div class="hd-box hd-iso">Isolator<small>routes · transforms · generated frames · filter</small></div>
   <div class="hd-arrow">⇄</div>
-  <div class="hd-box">Bus B<small>MoTeC M1</small></div>
+  <div class="hd-box hd-b">Bus B<small>standalone ECU</small></div>
 </div>
 <p class="muted" style="margin-top:0">By default: <b>A → B</b> only what the route table allows (a whitelist), <b>B → A</b> everything.</p>
 <p>For every frame it receives, the isolator decides in this order:</p>
 <ol>
 <li><b>Generated copy?</b> If the isolator itself builds a frame with this ID (Generated frames tab) and the frame arrived on the <i>other</i> bus, it is dropped, so the receiver never sees two sources.</li>
 <li><b>First matching route.</b> The route table is read top to bottom; the first row whose ID (or range), ID type (11/29-bit) and direction match decides: <i>Drop</i>, or <i>Pass</i> (optionally through a transform, rate limit or on-change rule).</li>
-<li><b>Default.</b> IDs with no matching row follow the default for that direction (Bus settings). Normally A → B drops (a whitelist that protects the M1) and B → A passes.</li>
+<li><b>Default.</b> IDs with no matching row follow the default for that direction (Bus settings). Normally A → B drops (a whitelist that protects the ECU) and B → A passes.</li>
 </ol>
 <p>The isolator also <b>builds frames on a timer</b> (Generated frames) from data it caches, and can merge steering-wheel bytes into another frame (Buttons). Frames that cannot be sent within the <i>TX max age</i> (50 ms by default) are thrown away rather than sent late.</p>
-<p>A is always the noisy side and B the M1, whichever physical connector they’re on (see <i>Connectors</i> under Bus settings).</p>` },
+<p>A is always the chassis side and B the ECU, whichever physical connector they’re on (see <i>Connectors</i> under Bus settings).</p>` },
 
   { id: 'status', group: 'Tabs', title: 'Status tab', html: `
 <p>Live numbers, refreshed once a second.</p>
@@ -2563,7 +2671,9 @@ const HELP = [
 <li><b>RX overflow</b> (the isolator couldn’t keep up) and <b>TX overflow</b> (the outgoing queue was full) should stay 0. <b>Stale TX dropped</b> rises when the far bus can’t take frames (unplugged, ECU off, overloaded).</li>
 <li><b>CPU used by routing</b>, <b>Slowest frame</b>: processing cost. <b>Longest loop pause</b> and <b>Longest wait before routing</b>: the worst delay in the last second. With nothing connected they stay well under 1 ms; while this page monitors traffic they can reach ~1.5 ms.</li>
 <li><b>Hardware filter</b> line: whether Bus A’s filter is on, how many IDs it lets through, or why it’s off. Frames it rejects don’t appear in Bus A’s counts.</li>
-<li><b>Generated frames</b>: rate sent, periods skipped because a source frame was missing (<i>No source</i>), the bytes sent, and the M1’s own copy if it still sends one. <i>Check</i> compares the constant bits of the M1 copy with the isolator’s: any <i>constant mismatch</i> means the definition differs from the M1’s.</li>
+<li><b>Generated frames</b>: rate sent, periods skipped because a source frame was missing (<i>No source</i>), the bytes sent, and the ECU’s own copy if it still sends one. <i>Check</i> compares the constant bits of the ECU copy with the isolator’s: any <i>constant mismatch</i> means the definition differs from the ECU’s.</li>
+<li><b>Bus load</b> (firmware 2.6+): the share of each bus’s capacity in use, from the frames the isolator receives and sends, with the busiest 100 ms as the <i>peak</i>. The chart covers the last 15 minutes while the page is connected. Above about 70 % frames start waiting; above 90 % expect delays and TX overflows. With Bus A’s hardware filter on, rejected frames aren’t counted, so Bus A reads low.</li>
+<li><b>Event history</b> (firmware 2.6+): every state change (warning, error passive, bus-off, back to normal) and every burst of bus errors, overflows or stale frames since the isolator started, with the time. It is kept on the isolator, so you can drive with the laptop unplugged and read it afterwards, as long as the isolator stayed powered (it is cleared at power-off). Repeats within 2 s are merged into one line with a count.</li>
 </ul>` },
 
   { id: 'routes', group: 'Tabs', title: 'Routes tab', html: `
@@ -2599,7 +2709,7 @@ const HELP = [
 <p>Notes: steps that read “this frame” see it as received, before any step. A rolling counter on a rate-limited route skips the values the limiter holds back. Deleting or reordering transforms renumbers the routes that use them.</p>` },
 
   { id: 'buttons', group: 'Tabs', title: 'Buttons tab (wheel merge)', html: `
-<p>Copies bytes of the steering wheel frame into another frame, so the M1 can read extra buttons without another receive slot. Routes that use the <b>Merge wheel buttons</b> transform get these bytes (by default the ABS frame 0x2B2).</p>
+<p>Copies bytes of the steering wheel frame into another frame, so the ECU can read extra buttons without another receive slot. Routes that use the <b>Merge wheel buttons</b> transform get these bytes (by default the ABS frame 0x2B2).</p>
 <ul>
 <li><b>Wheel byte → Into byte:</b> which byte goes where (bytes numbered 1–8). <b>Bit mask</b> (hex): which bits are copied; the others keep the original frame’s value.</li>
 <li><b>Catch taps:</b> also reports a press that started and ended between two frames, for one frame. It is not a latch. Only use it on bytes where every bit is one button, because it ORs values together.</li>
@@ -2608,12 +2718,12 @@ const HELP = [
 <p>The wheel frame itself is still forwarded by its own route; this is an extension, not a replacement.</p>` },
 
   { id: 'generated', group: 'Tabs', title: 'Generated frames tab', html: `
-<p>Frames the isolator builds and sends on a timer: up to 8, each with an ID, bus, period, length, constant bytes, and up to 4 fields written over them. The defaults are the three Aston Martin cluster frames that the M1 used to send.</p>
+<p>Frames the isolator builds and sends on a timer: up to 8, each with an ID, bus, period, length, constant bytes, and up to 4 fields written over them. The factory defaults are three cluster frames for the original install (an Aston Martin dash); replace or turn them off for other cars.</p>
 <ul>
 <li><b>Copied from a frame:</b> a field of a cached source frame (any ID, either bus), rescaled with <code>out = raw × factor + offset</code>, rounded half up and clamped to the field.</li>
 <li><b>Rolling counter:</b> adds <i>step</i> every frame sent, wrapping at the field size.</li>
-<li><b>Source rule:</b> a frame is only sent while every source is fresh (younger than its stale time). M1 off → the frames stop, as they would if the M1 sent them itself.</li>
-<li><b>Other-bus copy:</b> while a frame is <b>On</b>, a frame with the same ID arriving on the other bus (the M1’s own copy) is dropped, and checked against the isolator’s on the Status tab. Turn a frame off to pass the M1’s copy through instead.</li>
+<li><b>Source rule:</b> a frame is only sent while every source is fresh (younger than its stale time). ECU off → the frames stop, as they would if the ECU sent them itself.</li>
+<li><b>Other-bus copy:</b> while a frame is <b>On</b>, a frame with the same ID arriving on the other bus (the ECU’s own copy) is dropped, and checked against the isolator’s on the Status tab. Turn a frame off to pass the ECU’s copy through instead.</li>
 </ul>
 <p><b>Picking bits:</b> click “Pick bits in the grid”, then the first and last bit in the frame grid. <b>Use a saved signal / DBC signal</b> fills a source from the bit analyzer or a DBC file. <b>Work it out from units…</b> turns “physical = raw × scale + offset” on both sides into the factor and offset.</p>
 <p>The <b>preview</b> uses exactly the firmware’s math, so the bytes it shows are the bytes the board sends for those test values.</p>` },
@@ -2622,19 +2732,29 @@ const HELP = [
 <ul>
 <li><b>Bit rates</b> for each bus (125k / 250k / 500k / 1M). Take effect after Save + restart.</li>
 <li><b>Connectors:</b> normally Bus A is on CAN0 and Bus B on CAN1; swap if the harness is the other way round. Only the physical connector changes. Takes effect after Save + restart.</li>
-<li><b>IDs not in the route table:</b> A → B <i>Drop</i> (whitelist) is what protects the M1 from the noisy bus. B → A <i>Pass</i> keeps every noisy-side device that listens to the M1 working.</li>
-<li><b>Hardware filter on Bus A:</b> the CAN controller rejects noisy-side frames the isolator has no use for, so they cost no CPU. Worked out from the routes automatically. It is off when A → B passes unrouted IDs or when anything needed from Bus A is 29-bit (in this mode the hardware rejects every 29-bit frame), and opens while the sniffer or monitor captures Bus A.</li>
+<li><b>IDs not in the route table:</b> A → B <i>Drop</i> (whitelist) is what protects the ECU from the chassis bus. B → A <i>Pass</i> keeps every chassis-side device that listens to the ECU working.</li>
+<li><b>Hardware filter on Bus A:</b> the CAN controller rejects chassis-side frames the isolator has no use for, so they cost no CPU. Worked out from the routes automatically. It is off when A → B passes unrouted IDs or when anything needed from Bus A is 29-bit (in this mode the hardware rejects every 29-bit frame), and opens while the sniffer or monitor captures Bus A.</li>
 <li><b>TX max age:</b> a frame that can’t be sent within this time is discarded instead of sent late. Keep it a little above your slowest important period.</li>
 </ul>` },
 
   { id: 'sniffer', group: 'Tabs', title: 'ID sniffer tab', html: `
 <p>Lists every ID received on each bus (up to 200 per bus), how often it arrives, its latest data, and what the route table <i>in this page</i> would do with it (including unsent edits). Grey rows haven’t been seen for 3 seconds.</p>
 <ul><li><b>+ route</b> adds a route row for that ID in the matching direction.</li><li><b>monitor</b> opens it in the frame monitor and bit analyzer.</li></ul>
-<p>The sniffer only runs while this tab is open (it stops by itself 5 seconds after the page stops asking), and Bus A’s hardware filter opens while it runs so you see everything.</p>` },
+<p>The sniffer only runs while this tab is open (it stops by itself 5 seconds after the page stops asking), and Bus A’s hardware filter opens while it runs so you see everything.</p>
+<h4>What changed? (firmware 2.6+)</h4>
+<p>Finds the bits behind a button, switch or lever, even on a busy bus, because the isolator itself notes every bit that flips in every frame (nothing is missed between updates).</p>
+<ol>
+<li>Tick the bus(es) to watch.</li>
+<li><b>1 · Background:</b> with everything still (engine state as it will be during the test), press <b>Record background</b>. For 10 s it learns which bits change by themselves: counters, sensor values, checksums. These are ignored.</li>
+<li><b>2 · Action:</b> press <b>Start</b>, do the thing a few times (press and release the button), press <b>Stop</b>. Repeat for a second and third try.</li>
+<li>The results list the IDs and bits that changed during the action but not in the background, with how many tries they appeared in. The real signal shows up in every try. <i>new ID</i> means the frame only appeared during the action.</li>
+<li><b>analyze</b> opens the frame in the bit analyzer with the changed bits already selected; <b>+ route</b> adds a route for it.</li>
+</ol>
+<p>Tips: keep the background long enough to catch slow-changing values, and do the action several times in each try. If nothing shows up, the signal may sit on a bit that also changes by itself (record a shorter background) or on the other bus.</p>` },
 
   { id: 'monitor', group: 'Tabs', title: 'Frame monitor and bit analyzer', html: `
 <p>The <b>monitor</b> captures individual frames with 0.1 ms timestamps: received on a bus (A RX, B RX) or sent by the isolator after routing and transforms (A TX, B TX). Add up to 8 filters (one ID, a range, or all IDs) and press Start. Changed bytes are highlighted and Δt is the time since the previous frame with that ID. <b>Save as CSV</b> exports the capture.</p>
-<p>A whole busy bus is more than USB can carry; lost frames are counted, so filter to the IDs you need. The page keeps the last 20,000 frames.</p>
+<p>A whole busy bus is more than USB can carry; lost frames are counted, so filter to the IDs you need. The page keeps the last 100,000 frames.</p>
 <p><b>Bit analyzer</b> (click a frame):</p>
 <ul>
 <li>The grid shows the latest frame’s bits; <b>brighter cells change more often</b>, which is the quickest way to find where a value lives.</li>
@@ -2644,13 +2764,37 @@ const HELP = [
 <li><b>Copy to sender</b> puts the latest frame into the test-frame sender.</li>
 </ul>` },
 
+  { id: 'graph', group: 'Tabs', title: 'Graph tab', html: `
+<p>Plots signals over time, one chart per signal on a shared time axis. Hover any chart to read every signal at that moment.</p>
+<ul>
+<li><b>Add signals</b> from your DBC files (type part of the name), from signals saved in the bit analyzer, or the analyzer’s current selection. Choose where the frame is captured: <i>A RX</i> / <i>B RX</i> (received on a bus) or <i>A TX</i> / <i>B TX</i> (what the isolator sends, after transforms). The signal list is kept in this browser.</li>
+<li><b>Data:</b> <i>Live</i> uses the frame monitor. Press <b>Capture these live</b> to add monitor filters for just these IDs and start it. <i>Last recording</i> and <i>Loaded log file</i> plot from the Record &amp; replay tab, so you can study a drive afterwards.</li>
+<li><b>Show</b> picks the time window. Long recordings are thinned for drawing but keep their highs and lows, so spikes still show.</li>
+<li>Named values from the DBC (for example gear positions) are shown as text next to the number.</li>
+</ul>
+<p>Use it to check scaling (does the value match the gauge?), to compare a transformed or generated value (TX) with its source (RX), or to watch a value during a drive.</p>` },
+
+  { id: 'replay', group: 'Tabs', title: 'Record & replay tab', html: `
+<h4>Record</h4>
+<p>Records frames with their timing, using the frame monitor: either everything on the ticked buses, or just the monitor’s filters. Leave the page open while it records. The counts show the frames, the length and any frames lost over USB. A whole busy bus can be more than USB carries, so record only what you need if <i>Lost</i> climbs. Save the recording as a <b>candump log</b> (opens in SavvyCAN, can-utils and most CAN tools) or as <b>CSV</b>. It is also ready to replay straight away.</p>
+<h4>Replay (firmware 2.6+)</h4>
+<p>Load a log file (candump <code>-l</code> logs, CSV from this tool or SavvyCAN, Vector <code>.asc</code>), or use the last recording. Each channel in the file is replayed one of these ways:</p>
+<ul>
+<li><b>Feed in as received on Bus A / B:</b> each frame goes through the isolator exactly as if it had arrived on that bus: routes, rate limits, transforms, generated-frame sources. Use it on the bench: replay a drive recorded on Bus A into the isolator with only the ECU (or a dash) connected, and check what comes out with the monitor (A TX / B TX). These frames are counted as received on Status but not in the bus load.</li>
+<li><b>Send on Bus A / B:</b> puts the frames straight onto the bus, bypassing the route table, like test frames.</li>
+<li><b>Skip</b> leaves that channel out.</li>
+</ul>
+<p>Options: speed (¼× to 4×), loop, a time range, and an ID list (only these, or all except these; ranges like <code>100-1FF</code>).</p>
+<p>The page streams the frames and the isolator times them itself to within about a millisecond. <i>Late</i> counts frames more than 50 ms behind their time. <i>Pauses</i> counts times the stream fell behind and playback paused instead of bursting. Replay stops by itself 5 seconds after this page closes or the cable is pulled.</p>
+<div class="callout warn">Frames sent with <b>Send on</b> go onto the real bus. On the car they can trigger warnings or change what modules do. Replay with the engine off, and prefer <i>Feed in</i> for testing settings.</div>` },
+
   { id: 'send', group: 'Tabs', title: 'Send test frames tab', html: `
 <p>Puts a frame straight onto a bus, bypassing the routes: once, or repeated on a timer in up to 4 slots.</p>
 <div class="callout warn"><b>These are real frames on a real bus.</b> On the car they can trigger warnings, change what an ECU or the cluster does, or clash with a real node using the same ID. The page asks once per session before the first send.</div>
 <p>Repeating frames stop by themselves 5 seconds after the page goes quiet (closed, crashed, cable pulled), so a forgotten test can never keep sending.</p>` },
 
   { id: 'dbc', group: 'Tabs', title: 'DBC files tab', html: `
-<p>Load CAN database files (<code>.dbc</code>), such as the MoTeC M1 General and Cruise files or your wheel’s, so the sniffer and monitor show message names, the bit analyzer decodes every signal with units and value names, and generated-frame or transform sources can be picked by signal name.</p>
+<p>Load CAN database files (<code>.dbc</code>), such as your ECU maker’s files or your steering wheel’s, so the sniffer and monitor show message names, the bit analyzer decodes every signal with units and value names, and generated-frame or transform sources can be picked by signal name.</p>
 <ul>
 <li>Set which bus each file <b>describes</b>, so an ID used differently on the two buses isn’t mixed up. When two files define the same ID, the one higher in the list wins.</li>
 <li>Files are kept in this browser only; nothing goes to the board.</li>
@@ -2667,16 +2811,21 @@ const HELP = [
 <p>The bit grids in this page show bits 7 → 0 left to right, one row per byte; hover a cell to see its DBC bit number.</p>` },
 
   { id: 'recipes', group: 'How to', title: 'How-to recipes', html: `
-<h4>Let a new noisy-side ID through to the M1</h4>
-<ol><li>ID sniffer → Start; find the ID on Bus A (it shows <i>Default: drop</i>).</li><li>Click <b>+ route</b>. On Routes, add a Note and, if the M1 doesn’t need every frame, a Min ms.</li><li>Send to board, check the sniffer now says <i>Row n: pass</i> and the M1 sees it, then Save.</li></ol>
+<h4>Let a new chassis-side ID through to the ECU</h4>
+<ol><li>ID sniffer → Start; find the ID on Bus A (it shows <i>Default: drop</i>).</li><li>Click <b>+ route</b>. On Routes, add a Note and, if the ECU doesn’t need every frame, a Min ms.</li><li>Send to board, check the sniffer now says <i>Row n: pass</i> and the ECU sees it, then Save.</li></ol>
 <h4>Slow down a chatty frame</h4>
 <p>Set <b>Min ms</b> on its route (e.g. 100 for 10 Hz). The newest data always wins. For mostly-static data use <b>On change</b> with a <b>Heartbeat</b> instead.</p>
 <h4>Find which bit a button sets</h4>
-<ol><li>Sniffer → <b>monitor</b> on the wheel ID (or add a filter in Frame monitor).</li><li>Press the button a few times; the bit analyzer cells that light up are the ones that change.</li><li>Click that bit twice (first and last bit), name it, Save signal.</li></ol>
+<ol><li>ID sniffer → <b>What changed?</b> → Record background with nothing touched.</li><li>Start, press the button a few times, Stop. Do two or three tries.</li><li>The bit that appears in every try is the one. Click <b>analyze</b>, name it, Save signal.</li></ol>
+<p>Without firmware 2.6: Sniffer → <b>monitor</b> on the ID, press the button a few times, and look for the bit analyzer cells that light up.</p>
+<h4>Test settings at your desk with a recording from the car</h4>
+<ol><li>In the car: Record &amp; replay → record everything on A RX (and B RX) for a few minutes of driving → Save as candump log.</li><li>At the desk, with only the ECU or the dash connected: load the log, set A RX to <i>Feed in as received on Bus A</i>, Start replay.</li><li>Watch the result with the frame monitor (B TX) or the Graph tab, change routes or transforms, Send, and replay again.</li></ol>
+<h4>Find out what went wrong on a drive</h4>
+<p>After the drive, connect (without power-cycling the isolator) and look at Status → <b>Event history</b>: bus state changes and error bursts are listed with the time they happened.</p>
 <h4>Move a frame to another ID, or clear a bit</h4>
 <p>Transforms → + Add transform → <i>Change the ID</i> and/or <i>Set a field to a value</i> (length 1, value 0 to clear). Check with Try it, pick it in the route’s Transform column, Send, Save.</p>
-<h4>Build a frame the M1 used to send</h4>
-<ol><li>Load the M1 DBC (DBC files tab).</li><li>Generated frames → + Add generated frame: ID, bus, period, constant bytes.</li><li>+ Field from a frame → pick the source by DBC signal name; <b>Work it out from units…</b> for the scaling; pick the destination bits in the grid.</li><li>Check the preview, turn it On, Send; on Status compare with the M1’s copy (Check column), then Save and disable the custom message in the M1.</li></ol>
+<h4>Build a frame the ECU used to send</h4>
+<ol><li>Load the ECU’s DBC (DBC files tab).</li><li>Generated frames → + Add generated frame: ID, bus, period, constant bytes.</li><li>+ Field from a frame → pick the source by DBC signal name; <b>Work it out from units…</b> for the scaling; pick the destination bits in the grid.</li><li>Check the preview, turn it On, Send; on Status compare with the ECU’s copy (Check column), then Save and stop the ECU sending its own copy.</li></ol>
 <h4>Test a change safely</h4>
 <p>Send to board (RAM only) → test → Save, or <b>More… → Board: go back to saved settings</b>. A power cycle also discards unsaved changes.</p>
 <h4>Back up your settings</h4>
@@ -2703,14 +2852,16 @@ const HELP = [
 
   { id: 'trouble', group: 'Reference', title: 'Troubleshooting', html: `
 <h4>Connect does nothing / no port in the list</h4>
-<ul><li>Use Chrome or Edge (the button says “Needs Chrome or Edge” in other browsers).</li><li>Close PlatformIO / Arduino serial monitors and any other tab with this page connected.</li><li>Try another USB-C cable (some only carry power) or port. If the board was held in BOOT at power-up, power-cycle it.</li></ul>
+<ul><li>Use Chrome or Edge (the button says “Needs Chrome or Edge” in other browsers).</li><li>Close PlatformIO / Arduino serial monitors and any other tab with this page connected.</li><li>Try another USB-C cable (some only carry power) or port. If the board was held in BOOT at power-up, power-cycle it.</li><li><b>Windows:</b> Windows 10 and 11 install the driver by themselves the first time the board is plugged in (it appears in Device Manager under Ports as “USB Serial Device (COM…)”). If it says the port is in use, close any program holding that COM port.</li><li><b>Linux:</b> your user needs access to serial ports (usually the <code>dialout</code> group: <code>sudo usermod -aG dialout $USER</code>, then log in again).</li></ul>
 <h4>A bus shows Error passive or Bus-off</h4>
-<ul><li>Is the other node powered and connected? A bus with only the isolator on it can’t acknowledge frames.</li><li>Check CAN-H / CAN-L aren’t swapped and that the bus has 120 Ω at each end. The CANipulator’s termination is a solder jumper per channel, open from the factory; the M1 side usually needs it bridged.</li><li>Check both buses run the bit rate set on Bus settings.</li></ul>
+<ul><li>Is the other node powered and connected? A bus with only the isolator on it can’t acknowledge frames.</li><li>Check CAN-H / CAN-L aren’t swapped and that the bus has 120 Ω at each end. The CANipulator’s termination is a solder jumper per channel, open from the factory; the ECU side usually needs it bridged.</li><li>Check both buses run the bit rate set on Bus settings.</li></ul>
 <h4>A frame isn’t reaching the other side</h4>
 <ul><li>ID sniffer: is it received at all, and what does the Route column say? <i>Default: drop</i> means no route; a row number means that row decided.</li><li>An earlier row may cover it (look for “never used” warnings), or the ID type (11/29-bit) or direction may not match.</li><li>A transform condition may be dropping it: test it with Try it.</li><li>Frame monitor with A TX / B TX shows exactly what the isolator sends.</li></ul>
 <h4>A generated frame isn’t sent</h4>
-<ul><li>Status → Generated frames: a rising <i>No source</i> means a source frame is missing or older than its stale time (e.g. the M1 is off), or shorter than the bits read.</li><li>Check the frame is <b>On</b> and the source bus and ID are right.</li></ul>
+<ul><li>Status → Generated frames: a rising <i>No source</i> means a source frame is missing or older than its stale time (e.g. the ECU is off), or shorter than the bits read.</li><li>Check the frame is <b>On</b> and the source bus and ID are right.</li></ul>
 <h4>The monitor reports lost frames</h4><p>USB can’t carry a whole busy bus; add narrower filters.</p>
+<h4>A replay shows Late or Pauses</h4><p>The page couldn’t stream frames fast enough: keep this tab in front (browsers slow down background tabs), close the sniffer and monitor while replaying, or lower the speed.</p>
+<h4>Bus load is high</h4><p>Above about 70 % frames start to queue. Look for chatty IDs in the sniffer and slow them with Min ms on their routes; check that A → B isn’t forwarding unrouted IDs (Bus settings).</p>
 <h4>An update failed or rolled back</h4><p>The board keeps running its previous firmware. Check the file is the app image (<code>CanIsolatorC6-x.y.z.bin</code>, not a merged/full-flash image), and that the cable stayed connected.</p>
 <h4>The LED is blue while both buses have traffic</h4><p>With Bus A’s hardware filter on, only frames the isolator needs count as Bus A traffic.</p>` },
 
@@ -2727,7 +2878,7 @@ const HELP = [
 
   { id: 'safety', group: 'Reference', title: 'Safety notes', html: `
 <ul>
-<li>The isolator sits between the M1 and the rest of the car. A wrong route, transform or generated frame can stop data the ECU, cluster or ABS-related functions rely on. Test changes with <b>Send to board</b> (RAM only) on the bench or with the car stationary before saving.</li>
+<li>The isolator sits between the ECU and the rest of the car. A wrong route, transform or generated frame can stop data the ECU, cluster or ABS-related functions rely on. Test changes with <b>Send to board</b> (RAM only) on the bench or with the car stationary before saving.</li>
 <li>Save settings and update firmware with the engine off: flash writes briefly pause CAN reception.</li>
 <li>Test frames go onto the real bus; use them deliberately.</li>
 <li>Remove any bench link between CAN0 and CAN1 before installing in the car: forwarded frames would otherwise loop.</li>
@@ -2748,11 +2899,14 @@ const HELP = [
 <dt>Motorola / Intel</dt><dd>Big-endian / little-endian bit ordering of a signal; see <i>Bit numbering</i>.</dd>
 <dt>Hardware filter</dt><dd>The CAN controller’s acceptance filter: frames it rejects never reach the CPU.</dd>
 <dt>Rollback</dt><dd>Returning to the previous firmware automatically when a new one doesn’t confirm itself.</dd>
+<dt>Bus load</dt><dd>The share of the time a bus is busy carrying frames. 500 kbit/s carries about 4,000 8-byte frames a second at 100 %.</dd>
+<dt>candump log</dt><dd>The text log format of Linux can-utils: one frame per line with a timestamp, interface and <code>ID#data</code>. Most CAN tools can open it.</dd>
+<dt>Feed in (replay)</dt><dd>Replaying a frame into the isolator as if it had been received on a bus, so it goes through the routes and transforms.</dd>
 </dl>` },
 ];
 
 const HELP_FOR_TAB = { status: 'status', routes: 'routes', transforms: 'transforms', buttons: 'buttons', generated: 'generated', settings: 'settings',
-                       sniffer: 'sniffer', monitor: 'monitor', send: 'send', dbc: 'dbc', firmware: 'update', help: 'start' };
+                       sniffer: 'sniffer', monitor: 'monitor', send: 'send', dbc: 'dbc', firmware: 'update', help: 'start', graph: 'graph', replay: 'replay' };
 let helpQuery = '', helpBackTab = 'status';
 
 function helpBitGrid(start, len, order) {
@@ -2825,6 +2979,926 @@ function highlightText(root, q) {
 }
 
 // ===========================================================================
+// Firmware 2.6 features: helpers
+// ===========================================================================
+const has = (f) => !!state.hello?.features?.includes(f);
+// Background traffic (monitor, replay) doesn't stop the once-a-second status poll.
+function lockedBg(fn) { return locked(async () => { link.bg++; try { return await fn(); } finally { link.bg--; } }); }
+const fmtDur = (ms) => ms < 1000 ? ms + ' ms' : ms < 60000 ? (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' s' : ms < 3600000 ? `${Math.floor(ms / 60000)} min ${Math.round(ms / 1000) % 60} s` : `${Math.floor(ms / 3600000)} h ${Math.floor(ms / 60000) % 60} min`;
+const fmtClock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function downloadText(text, name, type) {
+  const blob = new Blob([text], { type: type || 'text/plain' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const stamp = () => new Date().toISOString().slice(0, 19).replace(/:/g, '');
+
+// ===========================================================================
+// Time-series chart: one or more series on one y axis, hover crosshair,
+// optional crosshair sync across charts (same 'sync' group).
+// ===========================================================================
+const chartSync = new Map();          // group -> [{ show(t), hide() }]
+function tsChart(o) {
+  const series = o.series.filter(s => s.pts.length);
+  const multi = o.series.length > 1;
+  const W = o.width || 760, H = o.height || 170, L = 58, R = multi ? 92 : 14, T = 10, B = 24;
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, a, txt) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); if (txt !== undefined) e.textContent = txt; return e; };
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': o.label || 'chart' });
+  const wrap = h('div', { class: 'chart-wrap' });
+  if (multi) wrap.append(h('div', { class: 'legend' }, o.series.map(s => h('span', {}, h('i', { style: `background:${s.color}` }), s.name))));
+  if (!series.length) { wrap.append(h('p', { class: 'hint', style: 'margin:6px 0' }, o.empty || 'No data yet.')); return wrap; }
+  const t0 = o.t0 ?? Math.min(...series.map(s => s.pts[0].t)), t1 = Math.max(o.t1 ?? -Infinity, ...series.map(s => s.pts[s.pts.length - 1].t), t0 + 1e-6);
+  // Reduce to ~2 points per pixel column (min and max), so spikes survive.
+  const reduce = (pts) => {
+    if (pts.length <= 1400) return pts;
+    const n = 600, out = [], w = (t1 - t0) / n;
+    let b = -1, lo = null, hi = null;
+    const flush = () => { if (lo) { if (lo === hi) out.push(lo); else if (lo.t <= hi.t) out.push(lo, hi); else out.push(hi, lo); } };
+    for (const p of pts) {
+      const k = Math.min(n - 1, Math.floor((p.t - t0) / w));
+      if (k !== b) { flush(); b = k; lo = hi = p; }
+      else { if (p.v < lo.v) lo = p; if (p.v > hi.v) hi = p; }
+    }
+    flush();
+    return out;
+  };
+  const red = series.map(s => ({ ...s, pts: reduce(s.pts) }));
+  let lo = o.yMin ?? Math.min(...red.map(s => Math.min(...s.pts.map(p => p.v))));
+  let hi = o.yMax ?? Math.max(...red.map(s => Math.max(...s.pts.map(p => p.v))));
+  if (o.yMinCap !== undefined) hi = Math.max(hi, o.yMinCap);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const raw = (hi - lo) / 3, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(k => k * mag).find(x => x >= raw);
+  lo = Math.floor(lo / step + 1e-9) * step; hi = Math.ceil(hi / step - 1e-9) * step;
+  const X = (t) => L + (t - t0) / (t1 - t0) * (W - L - R);
+  const Y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const fmtV = o.fmtV || ((v) => Number.isInteger(v) ? String(v) : v.toFixed(2));
+  const fmtT = o.fmtT || ((t) => t.toFixed(1) + ' s');
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    const y = Y(v);
+    svg.append(el('line', { x1: L, x2: W - R, y1: y, y2: y, class: 'grid' }));
+    svg.append(el('text', { x: L - 6, y: y + 4, 'text-anchor': 'end', class: 'axis' }, (o.fmtAxis || fmtV)(Math.round(v / step) * step)));
+  }
+  let lastTick = '';
+  for (let i = 0; i <= 4; i++) {
+    const t = t0 + (t1 - t0) * i / 4, txt = fmtT(t);
+    if (txt === lastTick) continue;
+    lastTick = txt;
+    svg.append(el('text', { x: X(t), y: H - 6, 'text-anchor': i === 0 ? 'start' : i === 4 ? 'end' : 'middle', class: 'axis' }, txt));
+  }
+  for (const s of red) {
+    svg.append(el('path', { d: s.pts.map((q, i) => (i ? 'L' : 'M') + X(q.t).toFixed(1) + ' ' + Y(q.v).toFixed(1)).join(''), class: 'series', style: `stroke:${s.color}` }));
+    if (multi) {
+      const last = s.pts[s.pts.length - 1];
+      svg.append(el('text', { x: X(last.t) + 6, y: Y(last.v) + 4, class: 'dlabel' }, `${s.name} ${fmtV(last.v)}`));
+    }
+  }
+  const cross = el('line', { y1: T, y2: H - B, class: 'cross', visibility: 'hidden' });
+  svg.append(cross);
+  const dots = red.map(s => { const d = el('circle', { r: 4, class: 'dot', style: `fill:${s.color}`, visibility: 'hidden' }); svg.append(d); return d; });
+  const tip = h('div', { class: 'tip', hidden: true });
+  const hit = el('rect', { x: L, y: T, width: W - L - R, height: H - T - B, fill: 'transparent' });
+  svg.append(hit);
+  const nearest = (pts, t) => { let a = 0, b = pts.length - 1; while (b - a > 1) { const m = (a + b) >> 1; if (pts[m].t < t) a = m; else b = m; } return Math.abs(pts[a].t - t) <= Math.abs(pts[b].t - t) ? pts[a] : pts[b]; };
+  const show = (t) => {
+    if (t < t0 || t > t1) { hide(); return; }
+    const cx = X(t);
+    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
+    const parts = [fmtT(t)];
+    let ty = H;
+    red.forEach((s, i) => {
+      const q = nearest(s.pts, t);
+      dots[i].setAttribute('cx', X(q.t)); dots[i].setAttribute('cy', Y(q.v)); dots[i].setAttribute('visibility', 'visible');
+      parts.push((multi ? s.name + ' ' : '') + (s.text ? s.text(q) : fmtV(q.v)));
+      ty = Math.min(ty, Y(q.v));
+    });
+    const r = svg.getBoundingClientRect();
+    tip.hidden = false; tip.textContent = parts.join(' · ');
+    tip.style.left = Math.min(Math.max(0, r.width - tip.offsetWidth - 4), Math.max(0, cx / W * r.width + 10)) + 'px';
+    tip.style.top = Math.max(0, ty / H * r.height - 30) + 'px';
+  };
+  const hide = () => { cross.setAttribute('visibility', 'hidden'); dots.forEach(d => d.setAttribute('visibility', 'hidden')); tip.hidden = true; };
+  const peers = () => o.sync ? (chartSync.get(o.sync) || []) : [];
+  const me = { show, hide };
+  if (o.sync) { if (!chartSync.has(o.sync)) chartSync.set(o.sync, []); chartSync.get(o.sync).push(me); }
+  hit.addEventListener('mousemove', (ev) => {
+    const r = svg.getBoundingClientRect();
+    const t = t0 + ((ev.clientX - r.left) / r.width * W - L) / (W - L - R) * (t1 - t0);
+    show(t); for (const p of peers()) if (p !== me) p.show(t);
+  });
+  hit.addEventListener('mouseenter', () => { chartHover = true; });
+  hit.addEventListener('mouseleave', () => { chartHover = false; hide(); for (const p of peers()) p.hide(); });
+  wrap.append(svg, tip);
+  return wrap;
+}
+
+// ===========================================================================
+// Status: bus load and event history
+// ===========================================================================
+const LOAD_KEEP = 900;                // points kept (15 min at one a second)
+function loadUpdate(s, prev) {
+  if (!has('load') || !prev) return;
+  if (s.up < prev.up) { state.loadHist = []; return; }          // board restarted
+  const dt = (s.up - prev.up) / 1000;
+  if (dt <= 0) return;
+  const baud = state.board?.hw?.baud || [500000, 500000];
+  state.loadHist.push({ t: Date.now(), v: [0, 1].map(i => Math.min(100, ((s.bus[i].bits - prev.bus[i].bits) >>> 0) / dt / baud[i] * 100)),
+                        pk: s.bus.map(b => Math.min(100, (b.pk || 0) / 10)) });
+  if (state.loadHist.length > LOAD_KEEP) state.loadHist.shift();
+}
+
+async function evUpdate(s) {
+  if (!has('ev') || s.ev === undefined || s.ev === state.evN) return;
+  try { const r = await cmd.ev(); state.events = { ...r, at: Date.now() }; state.evN = r.n; } catch {}
+}
+
+const EV_STATE = [
+  ['ok', 'Back to normal', 'Error active again.'],
+  ['warn', 'Error warning', 'Errors are building up (96 or more).'],
+  ['bad', 'Error passive', 'Its frames aren’t being acknowledged, or wiring / termination trouble.'],
+  ['bad', 'Bus-off', 'Too many errors: it stopped sending and is recovering by itself.'],
+];
+function evInfo(e) {
+  const [t, t2, bus, kind, a, count] = e;
+  const span = t2 > t ? ` over ${fmtDur(t2 - t)}` : '';
+  switch (kind) {
+    case 0: return { sev: '', what: 'Isolator started', detail: state.hello ? `Reset reason: ${state.hello.reset}.` : '' };
+    case 1: { const s = EV_STATE[a] || ['', 'State ' + a, '']; return { sev: s[0], what: s[1], detail: s[2] }; }
+    case 2: return { sev: 'warn', what: 'Bus errors', detail: `${count.toLocaleString()} error frames${span}. Usually wiring, termination, a wrong bit rate or electrical noise.` };
+    case 3: return { sev: 'bad', what: 'RX overflow', detail: `${count.toLocaleString()} received frames lost${span}: the isolator couldn’t keep up.` };
+    case 4: return { sev: 'warn', what: 'TX overflow', detail: `${count.toLocaleString()} frames not queued${span}: the bus is too busy or nothing acknowledges.` };
+    case 5: return { sev: 'warn', what: 'Stale frames dropped', detail: `${count.toLocaleString()} frames waited longer than the TX max age${span}.` };
+    default: return { sev: '', what: 'Event ' + kind, detail: '' };
+  }
+}
+
+function loadPanel() {
+  if (!has('load')) return null;
+  const hist = state.loadHist;
+  const now = hist[hist.length - 1];
+  const series = [0, 1].map(i => ({ name: i ? 'Bus B' : 'Bus A', color: i ? 'var(--busB)' : 'var(--busA)', pts: hist.map(p => ({ t: p.t, v: p.v[i] })) }));
+  const peak = [0, 1].map(i => hist.slice(-60).reduce((m, p) => Math.max(m, p.pk[i]), 0));
+  return h('div', { class: 'panel' },
+    h('h2', {}, 'Bus load'),
+    h('p', { class: 'hint' }, 'Share of each bus’s capacity in use, worked out from the frames the isolator receives and sends (approximate). Peak is the busiest 100 ms. Frames rejected by Bus A’s hardware filter aren’t counted, so Bus A reads low while the filter is on. Kept in this page while it is connected.'),
+    h('div', { class: 'kv' },
+      [0, 1].map(i => [kv(`Bus ${i ? 'B' : 'A'} now`, now ? now.v[i].toFixed(1) + ' %' : '–'), kv(`Bus ${i ? 'B' : 'A'} peak, last minute`, now ? peak[i].toFixed(1) + ' %' : '–', true, peak[i] > 80)])),
+    hist.length > 1 ? tsChart({ series, width: 1300, height: 190, yMin: 0, yMinCap: 10, label: 'Bus load over time',
+      fmtV: (v) => (Math.round(v * 10) / 10) + ' %', fmtT: (t) => fmtClock(t) }) : h('p', { class: 'hint', style: 'margin:8px 0 0' }, 'Collecting…'));
+}
+
+function eventsPanel() {
+  if (!has('ev')) return null;
+  const E = state.events;
+  const list = E ? [...E.e].reverse() : [];
+  const rows = list.map(e => {
+    const x = evInfo(e);
+    const wall = E.at - (E.up - e[0]);
+    return h('tr', {},
+      h('td', { class: 'num', title: `${fmtUp(e[0])} after the isolator started` }, fmtClock(wall)),
+      h('td', {}, e[3] === 0 ? '–' : e[2] ? 'B' : 'A'),
+      h('td', {}, h('span', { class: 'badge ' + x.sev }, x.what)),
+      h('td', { class: 'muted', style: 'font-size:13px' }, x.detail));
+  });
+  return h('div', { class: 'panel' },
+    h('h2', {}, 'Event history'),
+    h('p', { class: 'hint' }, 'Bus trouble the isolator has seen since it last started, newest first, including while this page wasn’t connected. Kept in the isolator’s memory (last 64 entries) and cleared when it loses power.' +
+      (E && E.dropped ? ` ${E.dropped} older entries were overwritten.` : '')),
+    h('div', { class: 'sniff-wrap', style: 'max-height:360px' },
+      h('table', {}, h('thead', {}, h('tr', {}, h('th', { class: 'num' }, 'Time'), h('th', {}, 'Bus'), h('th', {}, 'Event'), h('th', {}, 'Details'))),
+        h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: 4, class: 'muted' }, E ? 'Nothing yet.' : 'Loading…'))))));
+}
+
+// ===========================================================================
+// ID sniffer: "What changed?"
+// ===========================================================================
+function applySniff(d, phase) {
+  const now = Date.now();
+  for (const o of d) {
+    const map = state.sniff[o.b];
+    for (const [id, ext, count, len, data, chg] of o.ids) {
+      const k = ext + ':' + id;
+      const e = map.get(k) || { id, ext, first: now };
+      e.hz = o.dt ? count * 1000 / o.dt : 0; e.len = len; e.data = data;
+      if (count) e.seen = now;
+      map.set(k, e);
+      chgAccumulate(phase, o.b, id, ext, len, data, chg, count);
+    }
+    state.sniffLost[o.b] = o.lost;
+  }
+}
+async function sniffNow() {
+  const phase = state.chg.phase;
+  applySniff(await cmd.sniff(), phase);
+}
+
+function chgAccumulate(phase, bus, id, ext, len, data, chg, count) {
+  const C = state.chg;
+  if ((phase !== 'base' && phase !== 'act') || !(C.buses & (1 << bus)) || !count) return;
+  const map = phase === 'base' ? C.base : C.cur;
+  if (!map) return;
+  const k = bus + ':' + ext + ':' + id;
+  const e = map.get(k) || { bus, id, ext, mask: [0, 0, 0, 0, 0, 0, 0, 0] };
+  const c = bytesOf(chg || '');
+  for (let i = 0; i < 8; i++) e.mask[i] |= c[i] || 0;
+  e.data = data; e.len = len;
+  map.set(k, e);
+}
+const popcount = (m) => m.reduce((a, v) => { let n = 0; while (v) { n += v & 1; v >>= 1; } return a + n; }, 0);
+
+function chgResults() {
+  const C = state.chg, agg = new Map();
+  C.tries.forEach((T) => {
+    for (const [k, e] of T) {
+      const b = C.base.get(k);
+      const mask = e.mask.map((v, i) => v & ~(b ? b.mask[i] : 0));
+      if (!popcount(mask) && b) continue;
+      const a = agg.get(k) || { bus: e.bus, id: e.id, ext: e.ext, hits: 0, mask: [0, 0, 0, 0, 0, 0, 0, 0], isNew: !b };
+      a.hits++; a.data = e.data; a.len = e.len;
+      mask.forEach((v, i) => a.mask[i] |= v);
+      agg.set(k, a);
+    }
+  });
+  return [...agg.values()].sort((x, y) => y.hits - x.hits || (popcount(x.mask) || 99) - (popcount(y.mask) || 99) || x.bus - y.bus || x.id - y.id);
+}
+
+async function chgStartBase() {
+  const C = state.chg;
+  if (!has('chg')) { toast('“What changed?” needs isolator firmware 2.6 or newer (More… → Update firmware).', true); return; }
+  if (!C.buses) { toast('Tick Bus A and/or Bus B.', true); return; }
+  try {
+    if (!state.sniffOn) { await cmd.simple('sniff on'); state.sniffOn = true; state.sniff = [new Map(), new Map()]; }
+    await sniffNow();                                  // start from a clean slate
+  } catch (e) { toast(e.message, true); return; }
+  C.base = new Map(); C.tries = []; C.cur = null; C.phase = 'base'; C.t0 = Date.now();
+  clearInterval(C.timer);
+  C.timer = setInterval(() => { if (Date.now() - C.t0 >= C.baseSecs * 1000) chgEndBase(); else chgRefresh(); }, 250);
+  renderTab(false);
+}
+async function chgEndBase() {
+  const C = state.chg;
+  clearInterval(C.timer); C.timer = null;
+  try { await sniffNow(); } catch {}
+  C.phase = 'ready'; renderTab(false);
+}
+async function chgStartAct() {
+  const C = state.chg;
+  try { await sniffNow(); } catch {}                   // changes before this moment don't count
+  C.cur = new Map(); C.phase = 'act'; C.t0 = Date.now();
+  clearInterval(C.timer); C.timer = setInterval(chgRefresh, 250);
+  renderTab(false);
+}
+async function chgStopAct() {
+  const C = state.chg;
+  clearInterval(C.timer); C.timer = null;
+  try { await sniffNow(); } catch {}
+  C.tries.push(C.cur); C.cur = null; C.phase = 'ready';
+  renderTab(false);
+}
+function chgRefresh() { const p = $('#chgPanel'); if (p) p.replaceWith(chgPanel()); }
+
+// First contiguous run of changed bits (Intel numbering), for the analyzer.
+function chgFirstField(mask) {
+  for (let by = 0; by < 8; by++) {
+    if (!mask[by]) continue;
+    let lo = 0; while (!((mask[by] >> lo) & 1)) lo++;
+    let hi = lo; while (hi < 7 && ((mask[by] >> (hi + 1)) & 1)) hi++;
+    return { order: 'intel', start: by * 8 + lo, len: hi - lo + 1 };
+  }
+  return null;
+}
+
+function chgBitsView(r) {
+  const b = bytesOf(r.data || '');
+  const rows = [];
+  for (let by = 0; by < 8; by++) {
+    if (!r.mask[by]) continue;
+    rows.push(h('tr', {}, h('th', {}, 'byte ' + by), [7, 6, 5, 4, 3, 2, 1, 0].map(bit => {
+      const on = (r.mask[by] >> bit) & 1;
+      return h('td', { class: 'cb' + (on ? ' on' : ''), title: on ? `byte ${by}, bit ${bit} (DBC bit ${by * 8 + bit}) changed` : '' }, ((b[by] ?? 0) >> bit) & 1);
+    })));
+  }
+  return rows.length ? h('table', { class: 'chgbits' }, h('tbody', {}, rows)) : h('span', { class: 'muted' }, 'no single bits: the ID itself only appeared during the action');
+}
+
+function chgPanel() {
+  const C = state.chg;
+  const busBox = (bit, name) => h('label', { style: 'margin-right:10px' }, h('input', { type: 'checkbox', checked: C.buses & bit, disabled: C.phase === 'base' || C.phase === 'act',
+    onchange: (e) => { C.buses = e.target.checked ? C.buses | bit : C.buses & ~bit; } }), ' ', name);
+  const left = Math.max(0, C.baseSecs - (Date.now() - C.t0) / 1000);
+  const baseIds = C.base.size, noisy = [...C.base.values()].filter(e => popcount(e.mask)).length, noiseBits = [...C.base.values()].reduce((a, e) => a + popcount(e.mask), 0);
+  const res = C.tries.length ? chgResults() : [];
+  const step1 =
+    C.phase === 'base' ? [h('span', { class: 'badge warn' }, `Recording background… ${Math.ceil(left)} s`), ' ', h('button', { class: 'small', onclick: chgEndBase }, 'Done early')]
+    : [h('button', { class: C.phase === 'idle' ? 'primary' : '', disabled: !state.connected || C.phase === 'act', onclick: chgStartBase }, C.phase === 'idle' ? 'Record background' : 'Record background again'),
+       ' for ', h('input', { class: 'ms', value: C.baseSecs, oninput: (e) => { const v = parseIntSafe(e.target.value); if (v >= 2 && v <= 120) C.baseSecs = v; } }), ' s',
+       C.phase !== 'idle' ? h('span', { class: 'muted', style: 'margin-left:10px' }, `${baseIds} IDs seen; ${noiseBits} bits in ${noisy} IDs change by themselves and will be ignored.`) : null];
+  const step2 = C.phase === 'act'
+    ? [h('span', { class: 'badge ok' }, `Recording try ${C.tries.length + 1}… ${Math.floor((Date.now() - C.t0) / 1000)} s`), ' ', h('button', { class: 'primary', onclick: chgStopAct }, 'Stop')]
+    : [h('button', { class: C.phase === 'ready' ? 'primary' : '', disabled: C.phase !== 'ready', onclick: chgStartAct }, C.tries.length ? `Start try ${C.tries.length + 1}` : 'Start'),
+       C.tries.length ? h('button', { class: 'small', style: 'margin-left:8px', onclick: () => { C.tries = []; renderTab(false); } }, 'Clear tries') : null,
+       h('span', { class: 'muted', style: 'margin-left:10px' }, C.phase === 'ready' ? 'Press Start, do the thing a few times (press the button, flip the switch…), then Stop.' : 'Record the background first.')];
+  const rows = res.slice(0, 60).map(r => {
+    const v = routeVerdict(state.edit, r.bus, r.id, r.ext);
+    return h('tr', {},
+      h('td', {}, r.bus ? 'B' : 'A'),
+      h('td', { class: 'mono' }, fmtId(r.id, r.ext)),
+      h('td', { class: 'muted msgname' }, dbcMsg(r.bus, r.id, r.ext)?.name || ''),
+      h('td', { class: 'num' }, `${r.hits} of ${C.tries.length}`),
+      h('td', {}, r.isNew ? h('span', { class: 'badge warn', style: 'margin-bottom:4px' }, 'new ID') : null, chgBitsView(r)),
+      h('td', { class: 'row-tools' },
+        h('button', { class: 'small', title: 'Open in the bit analyzer with the changed bits selected', onclick: () => {
+          const f = chgFirstField(r.mask);
+          if (f) { curSig = { ...curSig, ...f, signed: 0, factor: 1, offset: 0, name: '' }; bitAnchor = null; }
+          monitorId(r.bus, r.id, r.ext);
+        } }, 'analyze'), ' ',
+        v.row === -1 ? h('button', { class: 'small', title: 'Add a route row for this ID', onclick: () => { addRoute({ first: r.id, ext: r.ext, dir: r.bus === 0 ? 1 : 2 }); toast(`Added row for ${fmtId(r.id, r.ext)}. Send to board to use it.`); } }, '+ route') : null));
+  });
+  return h('div', { class: 'panel', id: 'chgPanel' },
+    h('h2', {}, 'What changed?'),
+    h('p', { class: 'hint' }, 'Finds the bits that change when you do something in the car. First record the background with everything still, so bits that change by themselves (counters, sensors) are ignored. Then record the action. Repeat the action in a few tries: the real signal shows up in every one.'),
+    !has('chg') && state.connected ? h('p', { class: 'hint', style: 'color:var(--warn)' }, 'Needs isolator firmware 2.6 or newer.') : null,
+    h('div', { class: 'toolbar' }, h('b', { style: 'margin-right:6px' }, 'Watch'), busBox(1, 'Bus A'), busBox(2, 'Bus B')),
+    h('div', { class: 'chg-step' }, h('b', {}, '1 · Background'), h('div', {}, step1)),
+    h('div', { class: 'chg-step' }, h('b', {}, '2 · Action'), h('div', {}, step2)),
+    C.tries.length ? h('div', { style: 'margin-top:12px' },
+      res.length ? h('div', { class: 'sniff-wrap' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Bus'), h('th', {}, 'ID'), h('th', {}, 'Message'), h('th', { class: 'num', title: 'In how many tries these bits changed' }, 'Tries'), h('th', {}, 'Changed bits (value now)'), h('th', {}, ''))),
+        h('tbody', {}, rows)))
+        : h('p', { class: 'muted' }, 'Nothing changed that doesn’t also change by itself. Try the action again, or record a shorter background.')) : null);
+}
+
+// ===========================================================================
+// Record & replay
+// ===========================================================================
+const WHERE_CH = { 1: 'A RX', 2: 'B RX', 4: 'A TX', 8: 'B TX' };
+const CANDUMP_CH = { 1: 'can0', 2: 'can1', 4: 'can0tx', 8: 'can1tx' };
+
+async function recStart() {
+  const R = state.rec;
+  if (!state.connected) return;
+  if (R.useMon) { if (!state.monFilters.length) { toast('The frame monitor has no filters. Add some there, or record everything.', true); return; } }
+  else {
+    if (!R.what) { toast('Tick at least one of A RX / B RX / A TX / B TX.', true); return; }
+    if (state.monFilters.length && !(state.monFilters.length === 1 && state.monFilters[0].first === 0 && state.monFilters[0].last >= 0x1FFFFFFF && state.monFilters[0].where === R.what) &&
+        !confirm('Recording everything replaces the frame monitor’s filters. Continue?')) return;
+    state.monFilters = [{ where: R.what, ext: 2, first: 0, last: 0x1FFFFFFF }];
+  }
+  R.frames = []; R.lost = 0; R.wall0 = Date.now(); R.on = true; R.t0 = null;
+  try {
+    if (state.monOn) await monApply();
+    else { await monApply(); state.monOn = true; state.monT0 = null; state.monFrames = []; state.monLost = 0; }
+  } catch (e) { R.on = false; toast(e.message, true); }
+  renderTab(false);
+}
+function recStop(msg) {
+  const R = state.rec;
+  if (!R.on) return;
+  R.on = false;
+  if (R.frames.length) {
+    state.rp.file = { name: `Recording ${new Date(R.wall0).toLocaleTimeString()}`, ...framesToFile(R.frames.map(f => ({ t: f.t, ch: WHERE_CH[f.where], where: f.where, id: f.id, ext: f.ext, data: f.data }))) };
+    rpDefaultMap();
+  }
+  if (msg) toast(msg, true);
+  renderTab(false);
+}
+function recPush(frames, lost) {
+  const R = state.rec;
+  if (!R.on) return;
+  for (const f of frames) R.frames.push(f);
+  R.lost += lost;
+  if (R.frames.length >= 2e6) recStop('Recording stopped at 2 million frames.');
+}
+
+function framesToFile(frames) {
+  frames.sort((a, b) => a.t - b.t);
+  const t0 = frames.length ? frames[0].t : 0;
+  const chans = [];
+  for (const f of frames) { f.t -= t0; if (!chans.includes(f.ch)) chans.push(f.ch); }
+  // Which bus a channel belongs to (for graphs): our labels say; otherwise first = A, second = B.
+  const whereOf = {};
+  chans.forEach((c, i) => { const w = Object.entries(WHERE_CH).find(([, n]) => n === c); whereOf[c] = w ? +w[0] : i === 0 ? 1 : i === 1 ? 2 : 0; });
+  for (const f of frames) if (f.where === undefined) f.where = whereOf[f.ch];
+  const counts = {}; for (const f of frames) counts[f.ch] = (counts[f.ch] || 0) + 1;
+  return { frames, chans, counts, dur: frames.length ? frames[frames.length - 1].t : 0 };
+}
+
+function saveCandump(frames, wall0) {
+  if (!frames.length) return;
+  const t0 = frames[0].t, base = wall0 / 1000;
+  const lines = frames.map(f => `(${(base + f.t - t0).toFixed(6)}) ${CANDUMP_CH[f.where] || 'can' + f.where} ${hex(f.id, f.ext)}#${f.data}`);
+  downloadText(lines.join('\n') + '\n', `can-recording-${stamp()}.log`);
+}
+function saveCsv(frames) {
+  const t0 = frames.length ? frames[0].t : 0;
+  const lines = ['time_s,where,id,extended,len,data'];
+  for (const f of frames) lines.push(`${(f.t - t0).toFixed(4)},${WHERE[f.where]},0x${hex(f.id, f.ext)},${f.ext},${f.data.length / 2},${spaced(f.data)}`);
+  downloadText(lines.join('\n') + '\n', `can-recording-${stamp()}.csv`, 'text/csv');
+}
+
+// Log files: candump -l, this tool's CSV, SavvyCAN CSV, Vector ASC.
+function parseLog(text) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  const head = lines.find(l => l.trim()) || '';
+  const cleanHex = (s) => s.replace(/[^0-9a-f]/gi, '').toUpperCase();
+  if (/^time_s,where,id,extended/i.test(head.trim())) {
+    for (const l of lines.slice(1)) {
+      const c = l.split(','); if (c.length < 6) continue;
+      const id = parseHex(c[2]); if (!Number.isFinite(id)) continue;
+      out.push({ t: +c[0], ch: c[1].trim(), id, ext: +c[3] ? 1 : 0, data: cleanHex(c[5]).slice(0, 16) });
+    }
+  } else if (/^time stamp\s*,/i.test(head.trim())) {
+    const cols = head.split(',').map(s => s.trim().toLowerCase());
+    const ci = (n) => cols.indexOf(n);
+    const iT = ci('time stamp'), iId = ci('id'), iExt = ci('extended'), iBus = ci('bus'), iLen = ci('len'), iD1 = ci('d1');
+    for (const l of lines.slice(lines.indexOf(head) + 1)) {
+      const c = l.split(','); if (c.length < 4) continue;
+      const id = parseHex(c[iId]); if (!Number.isFinite(id)) continue;
+      const len = Math.min(8, +c[iLen] || 0);
+      const data = Array.from({ length: len }, (_, k) => cleanHex(c[iD1 + k] || '0').padStart(2, '0').slice(-2)).join('');
+      out.push({ t: +c[iT] / 1e6, ch: 'bus ' + (iBus >= 0 ? c[iBus].trim() : '0'), id, ext: /true|1/i.test(c[iExt]) || id > 0x7FF ? 1 : 0, data });
+    }
+  } else {
+    let asc = false, dec = false;
+    for (const raw of lines) {
+      const l = raw.trim();
+      let m;
+      if ((m = /^\((\d+(?:\.\d+)?)\)\s+(\S+)\s+([0-9A-Fa-f]{1,8})#(R\d*|[0-9A-Fa-f]*)$/.exec(l))) {
+        if (m[4].startsWith('R')) continue;
+        out.push({ t: +m[1], ch: m[2], id: parseInt(m[3], 16), ext: m[3].length > 3 ? 1 : 0, data: m[4].toUpperCase().slice(0, 16) });
+      } else if (/^base\s+(hex|dec)/i.test(l)) { asc = true; dec = /dec/i.test(l); }
+      else if ((m = /^(\d+\.\d+)\s+(\d+)\s+([0-9A-Fa-f]+)(x?)\s+(Rx|Tx)\s+d\s+(\d+)((?:\s+[0-9A-Fa-f]{1,2})*)/.exec(l))) {
+        asc = true;
+        const id = dec ? parseInt(m[3], 10) : parseInt(m[3], 16);
+        const bytes = m[7].trim().split(/\s+/).filter(Boolean).slice(0, Math.min(8, +m[6]));
+        out.push({ t: +m[1], ch: `CH${m[2]} ${m[5]}`, id, ext: m[4] === 'x' || id > 0x7FF ? 1 : 0, data: bytes.map(b => b.padStart(2, '0')).join('').toUpperCase() });
+      }
+    }
+  }
+  if (!out.length) throw new Error('no CAN frames found (supported: candump -l logs, CSV from this tool or SavvyCAN, Vector .asc)');
+  return framesToFile(out);
+}
+
+function rpDefaultMap() {
+  const P = state.rp, F = P.file;
+  P.map = {};
+  F.chans.forEach((c, i) => {
+    P.map[c] = /TX$/i.test(c) && !/^CH/i.test(c) ? 'skip' : c === 'A RX' ? '2' : c === 'B RX' ? '3' : i === 0 ? '2' : i === 1 ? '3' : 'skip';
+  });
+}
+
+async function rpLoadFile(file) {
+  try {
+    const text = await file.text();
+    state.rp.file = { name: file.name, ...parseLog(text) };
+    rpDefaultMap();
+    toast(`Loaded ${file.name}: ${state.rp.file.frames.length.toLocaleString()} frames, ${fmtDur(Math.round(state.rp.file.dur * 1000))}.`);
+  } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+  renderTab(false);
+}
+
+function parseIdList(s) {
+  const out = [];
+  for (const part of s.split(/[\s,;]+/).filter(Boolean)) {
+    const [a, b] = part.split('-');
+    const x = parseId(a), y = b !== undefined ? parseId(b) : x;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || y < x) return null;
+    out.push([x, y]);
+  }
+  return out;
+}
+
+function rpBuild() {
+  const P = state.rp, F = P.file;
+  const from = P.from.trim() ? Number(P.from) : 0, to = P.to.trim() ? Number(P.to) : Infinity;
+  const ids = P.ids.trim() ? parseIdList(P.ids) : null;
+  if (P.ids.trim() && !ids) throw new Error('The ID list isn’t valid: use IDs or ranges like 640, 2B2, 100-1FF');
+  const inList = (id) => ids.some(([a, b]) => id >= a && id <= b);
+  const list = [];
+  for (const f of F.frames) {
+    const mode = P.map[f.ch];
+    if (mode === undefined || mode === 'skip' || f.t < from || f.t > to) continue;
+    if (ids && (P.idMode === 'only') !== inList(f.id)) continue;
+    list.push({ t: f.t, mode: +mode, id: f.id, ext: f.ext, data: f.data });
+  }
+  if (!list.length) return list;
+  const t0 = list[0].t;
+  for (const x of list) x.t = (x.t - t0) / P.speed;
+  return list;
+}
+
+async function rpStart() {
+  const P = state.rp;
+  if (!has('rp')) { toast('Replay needs isolator firmware 2.6 or newer (More… → Update firmware).', true); return; }
+  let list;
+  try { list = rpBuild(); } catch (e) { toast(e.message, true); return; }
+  if (!list.length) { toast('Nothing to replay with these choices.', true); return; }
+  if (list.some(x => x.mode < 2) && !confirmSend()) return;
+  Object.assign(P, { list, dur: list[list.length - 1].t, idx: 0, loopN: 0, offset: 0, running: true, endSent: false, status: null, free: (state.hello.rpRing || 1024) - 1, t0: Date.now() });
+  try {
+    await lockedBg(() => requestOk('rp start'));
+    await rpPump(true);
+    await lockedBg(() => requestOk('rp go'));
+  } catch (e) { P.running = false; toast('Replay: ' + e.message, true); renderTab(false); return; }
+  clearInterval(P.timer); P.timer = setInterval(rpPump, 100);
+  renderTab(false);
+}
+
+async function rpStop(quiet) {
+  const P = state.rp;
+  clearInterval(P.timer); P.timer = null;
+  const was = P.running; P.running = false;
+  if (was && state.connected) { try { await lockedBg(() => requestOk('rp off')); } catch {} }
+  if (!quiet) renderTab(false);
+}
+
+let rpPumping = false;
+async function rpPump(first) {
+  const P = state.rp;
+  if (rpPumping || !P.running || !state.connected) return;
+  rpPumping = true;
+  try {
+    let lines = 0;
+    while (P.free > 40 && lines < (first ? 60 : 30)) {
+      if (P.idx >= P.list.length) {
+        if (P.loop) { P.idx = 0; P.loopN++; P.offset += P.dur + 0.05; continue; }
+        if (!P.endSent) { P.status = await lockedBg(() => requestOk('rp end')); P.endSent = true; }
+        break;
+      }
+      let line = 'rpa', n = 0;
+      const start = P.idx;
+      while (P.idx < P.list.length && line.length < 900 && n < P.free) {
+        const f = P.list[P.idx];
+        line += ` ${Math.round((f.t + P.offset) * 10000).toString(16)},${f.mode},${f.id.toString(16)},${f.ext},${f.data}`;
+        P.idx++; n++;
+      }
+      const r = await lockedBg(() => requestOk(line));
+      P.free = r.free; P.status = r;
+      if (r.n < n) P.idx = start + r.n;              // board was full: the rest goes next time
+      lines++;
+    }
+    if (!lines && (!P.statAt || Date.now() - P.statAt > 400)) { P.status = await lockedBg(() => requestOk('rp')); P.free = P.status.free; P.statAt = Date.now(); }
+    if (P.status && !P.status.on) { P.running = false; clearInterval(P.timer); toast('The isolator stopped the replay.', true); }
+    else if (P.endSent && P.status && !P.status.run) { P.running = false; clearInterval(P.timer); toast(`Replay finished: ${P.status.sent.toLocaleString()} frames.`); }
+  } catch (e) { toast('Replay: ' + e.message, true); rpStop(true); }
+  rpPumping = false;
+  if (state.tab === 'replay') rpRefresh();
+}
+
+function rpRefresh() {
+  const el = $('#rpLive'); if (el) el.replaceWith(rpLive());
+  const r = $('#recLive'); if (r) r.replaceWith(recLive());
+}
+
+function recLive() {
+  const R = state.rec, n = R.frames.length;
+  const dur = n ? R.frames[n - 1].t - R.frames[0].t : 0;
+  return h('div', { id: 'recLive', class: 'kv' },
+    kv('Frames', n.toLocaleString()), kv('Length', fmtDur(Math.round(dur * 1000)), true),
+    kv('Average', dur > 0 ? Math.round(n / dur).toLocaleString() + ' /s' : '–', true),
+    kv('Lost', R.lost.toLocaleString(), true, R.lost > 0));
+}
+
+function rpLive() {
+  const P = state.rp, s = P.status;
+  if (!P.running && !s) return h('div', { id: 'rpLive' });
+  const cyc = P.dur + (P.loop ? 0.05 : 0);
+  const at = s ? s.at / 10000 : 0;
+  const pos = P.loop && cyc > 0 ? at % cyc : at;
+  const pct = P.dur > 0 ? Math.min(100, pos / P.dur * 100) : 100;
+  return h('div', { id: 'rpLive', style: 'margin-top:12px' },
+    h('div', { class: 'bar' }, h('div', { style: `width:${P.running ? pct : 100}%` })),
+    h('div', { class: 'kv' },
+      kv('State', P.running ? (s && s.end && !s.run ? 'Finishing' : 'Playing') : 'Stopped', true),
+      kv('Position', `${fmtDur(Math.round(pos * 1000))} of ${fmtDur(Math.round(P.dur * 1000))}` + (P.loop ? ` · loop ${Math.floor(at / (cyc || 1)) + 1}` : ''), true),
+      kv('Frames played', s ? s.sent.toLocaleString() : '0', true),
+      kv('Late (>50 ms)', s ? s.late.toLocaleString() : '0', true, s && s.late > 0),
+      kv('Pauses', s ? s.gaps.toLocaleString() : '0', true, s && s.gaps > 0)));
+}
+
+const RP_MODES = [['skip', 'Skip'], ['2', 'Feed in as received on Bus A'], ['3', 'Feed in as received on Bus B'], ['0', 'Send on Bus A'], ['1', 'Send on Bus B']];
+function replayView() {
+  const R = state.rec, P = state.rp, F = P.file;
+  const whereBoxes = Object.entries(WHERE).map(([bit, name]) => h('label', { style: 'margin-right:8px' },
+    h('input', { type: 'checkbox', checked: R.what & bit, disabled: R.on || R.useMon, onchange: (e) => { R.what = e.target.checked ? R.what | +bit : R.what & ~bit; } }), ' ', name));
+  const fileIn = h('input', { type: 'file', accept: '.log,.csv,.asc,.txt', hidden: true, onchange: (e) => { if (e.target.files[0]) rpLoadFile(e.target.files[0]); e.target.value = ''; } });
+  const busy = P.running;
+  const opt = (key, w, ph) => h('input', { style: `width:${w}px`, placeholder: ph, value: P[key], disabled: busy, oninput: (e) => { P[key] = e.target.value; } });
+  return h('div', {},
+    h('div', { class: 'panel' },
+      h('h2', {}, 'Record'),
+      h('p', { class: 'hint' }, 'Records frames with their timing, to save as a log file or replay later (for example at your desk). It uses the frame monitor, so a whole busy bus may lose some frames over USB: the count shows it. Leave the page open while recording.'),
+      h('div', { class: 'toolbar' }, h('b', { style: 'margin-right:4px' }, 'Record'),
+        h('label', {}, h('input', { type: 'radio', name: 'recwhat', checked: !R.useMon, disabled: R.on, onchange: () => { R.useMon = false; renderTab(false); } }), ' everything on '), whereBoxes,
+        h('label', { style: 'margin-left:8px' }, h('input', { type: 'radio', name: 'recwhat', checked: R.useMon, disabled: R.on, onchange: () => { R.useMon = true; renderTab(false); } }), ' the frame monitor’s filters' + (state.monFilters.length ? ` (${state.monFilters.length})` : ''))),
+      h('div', { class: 'toolbar' },
+        R.on ? h('button', { onclick: () => recStop() }, 'Stop recording') : h('button', { class: 'primary', disabled: !state.connected, onclick: recStart }, 'Start recording'),
+        R.on ? h('span', { class: 'badge ok' }, 'Recording') : null,
+        h('span', { class: 'spacer' }),
+        h('button', { disabled: R.on || !R.frames.length, onclick: () => saveCandump(R.frames, R.wall0) }, 'Save as candump log…'),
+        h('button', { disabled: R.on || !R.frames.length, onclick: () => saveCsv(R.frames) }, 'Save as CSV…')),
+      recLive()),
+    h('div', { class: 'panel' },
+      h('h2', {}, 'Replay'),
+      h('p', { class: 'hint' }, 'Plays a recording back with its original timing. “Feed in as received” puts each frame through the isolator’s routes, transforms and generated frames as if it had arrived on that bus, so you can test settings on the bench with only the ECU or the dash connected. “Send on” puts frames straight onto a bus.'),
+      !has('rp') && state.connected ? h('p', { class: 'hint', style: 'color:var(--warn)' }, 'Needs isolator firmware 2.6 or newer.') : null,
+      h('div', { class: 'toolbar' }, h('button', { disabled: busy, onclick: () => fileIn.click() }, 'Load a log file…'), fileIn,
+        h('span', { class: 'muted' }, F ? `${F.name} · ${F.frames.length.toLocaleString()} frames · ${fmtDur(Math.round(F.dur * 1000))}` : 'candump -l logs, CSV from this tool or SavvyCAN, Vector .asc — or record one above.')),
+      F ? h('div', {},
+        h('table', { style: 'max-width:640px' }, h('thead', {}, h('tr', {}, h('th', {}, 'In the file'), h('th', { class: 'num' }, 'Frames'), h('th', {}, 'Replay as'))),
+          h('tbody', {}, F.chans.map(c => h('tr', {}, h('td', {}, c), h('td', { class: 'num' }, F.counts[c].toLocaleString()),
+            h('td', {}, h('select', { disabled: busy, onchange: (e) => { P.map[c] = e.target.value; } }, RP_MODES.map(([v, t]) => h('option', { value: v, selected: P.map[c] === v }, t)))))))),
+        h('div', { class: 'toolbar', style: 'margin-top:10px' },
+          h('label', {}, 'Speed ', h('select', { disabled: busy, onchange: (e) => { P.speed = +e.target.value; } }, [0.25, 0.5, 1, 2, 4].map(v => h('option', { value: v, selected: P.speed === v }, v + '×')))),
+          h('label', {}, h('input', { type: 'checkbox', checked: P.loop, disabled: busy, onchange: (e) => { P.loop = e.target.checked; } }), ' loop'),
+          h('label', {}, 'from ', opt('from', 60, '0'), ' to ', opt('to', 60, 'end'), ' s')),
+        h('div', { class: 'toolbar' },
+          h('select', { disabled: busy, onchange: (e) => { P.idMode = e.target.value; } }, [['only', 'Only these IDs'], ['skip', 'All except these IDs']].map(([v, t]) => h('option', { value: v, selected: P.idMode === v }, t))),
+          opt('ids', 300, `blank = all · e.g. ${isHex() ? '640, 2B2, 100-1FF' : '1600, 690, 256-511'}`)),
+        h('div', { class: 'toolbar', style: 'margin-bottom:0' },
+          busy ? h('button', { onclick: () => rpStop() }, 'Stop') : h('button', { class: 'primary', disabled: !state.connected, onclick: rpStart }, 'Start replay'),
+          h('span', { class: 'muted', style: 'font-size:12.5px' }, 'Stops by itself 5 s after this page closes. Fed-in frames count as received on Status but not in bus load.')),
+        rpLive()) : null));
+}
+
+// ===========================================================================
+// Graph tab
+// ===========================================================================
+const graphStore = (() => { try { return JSON.parse(localStorage.getItem('isolator-graph') || '[]'); } catch { return []; } })();
+state.graph.sigs = graphStore;
+function saveGraph() { try { localStorage.setItem('isolator-graph', JSON.stringify(state.graph.sigs)); } catch {} }
+
+function graphFrames() {
+  const G = state.graph;
+  if (G.source === 'rec') return state.rec.frames;
+  if (G.source === 'file') return state.rp.file?.frames || [];
+  return state.monFrames;
+}
+function graphDecode(g, bytes) {
+  if (g.dbc) return dbcDecode(g.def, bytes, { signals: g.muxSel ? [g.muxSel] : [] });
+  const d = decode(bytes, g.def, sigPositions(g.def));
+  return d ? { raw: Number(d.raw), value: d.value, text: null } : null;
+}
+function graphAdd(g) {
+  const G = state.graph;
+  if (G.sigs.some(x => x.where === g.where && x.id === g.id && x.ext === g.ext && x.label === g.label)) { toast('Already on the graph.'); return; }
+  G.sigs.push(g); saveGraph(); renderTab(false);
+}
+
+async function graphCaptureLive() {
+  const need = [];
+  for (const g of state.graph.sigs) if (!need.some(n => n.where === g.where && n.id === g.id && n.ext === g.ext)) need.push(g);
+  for (const g of need) {
+    const covered = state.monFilters.some(f => (f.where & g.where) && (f.ext === 2 || f.ext === g.ext) && g.id >= f.first && g.id <= f.last);
+    if (!covered && !addMonFilter({ where: g.where, ext: g.ext, first: g.id, last: g.id })) return;
+  }
+  if (!state.monOn) await monStart(); else await monApply().catch(e => toast(e.message, true));
+  renderTab(false);
+}
+
+function graphCharts() {
+  const G = state.graph;
+  chartSync.set('graph', []);
+  const frames = graphFrames();
+  const wrap = h('div', { id: 'graphCharts' });
+  if (!G.sigs.length) { wrap.append(h('div', { class: 'panel' }, h('p', { class: 'muted', style: 'margin:0' }, 'Add a signal above.'))); return wrap; }
+  const tEnd = frames.length ? frames[frames.length - 1].t : 0;
+  const tStart = G.window ? Math.max(tEnd - G.window, frames.length ? frames[0].t : 0) : -Infinity;
+  // Scan the window once, collect points per signal.
+  const pts = G.sigs.map(() => []);
+  const keyOf = (w, e, i) => w + ':' + e + ':' + i;
+  const bySig = new Map();
+  G.sigs.forEach((g, i) => { for (const w of [1, 2, 4, 8]) if (g.where & w) { const k = keyOf(w, g.ext, g.id); if (!bySig.has(k)) bySig.set(k, []); bySig.get(k).push(i); } });
+  let i0 = frames.length - 1;
+  while (i0 > 0 && frames[i0 - 1].t >= tStart) i0--;
+  for (let i = Math.max(0, i0); i < frames.length; i++) {
+    const f = frames[i];
+    const list = bySig.get(keyOf(f.where, f.ext, f.id));
+    if (!list) continue;
+    const b = bytesOf(f.data);
+    for (const si of list) { const d = graphDecode(G.sigs[si], b); if (d && Number.isFinite(d.value)) pts[si].push({ t: f.t, v: d.value, x: d.text }); }
+  }
+  G.sigs.forEach((g, i) => {
+    const p = pts[i], last = p[p.length - 1];
+    const unit = g.def.unit ? ' ' + g.def.unit : '';
+    const fmtV = (v) => (Number.isInteger(v) ? v.toLocaleString() : Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2)) + unit;
+    wrap.append(h('div', { class: 'panel graph-card' },
+      h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
+        h('b', {}, g.label), h('span', { class: 'muted', style: 'font-size:12.5px' }, `${WHERE[g.where]} · ${fmtId(g.id, g.ext)} · ${g.def.start}|${g.def.len}@${g.def.order === 'intel' ? 1 : 0}${g.def.signed ? '-' : '+'}`),
+        h('span', { class: 'spacer' }),
+        last ? h('b', { class: 'graph-now' }, last.x !== null && last.x !== undefined ? `${last.x} (${last.v})` : fmtV(last.v)) : null,
+        h('button', { class: 'small', disabled: i === 0, title: 'Move up', onclick: () => { [G.sigs[i - 1], G.sigs[i]] = [G.sigs[i], G.sigs[i - 1]]; saveGraph(); renderTab(false); } }, '↑'),
+        h('button', { class: 'small', title: 'Remove', onclick: () => { G.sigs.splice(i, 1); saveGraph(); renderTab(false); } }, '✕')),
+      tsChart({ series: [{ name: g.label, color: 'var(--accent)', pts: p, text: (q) => q.x !== null && q.x !== undefined ? `${q.x} (${q.v})` : fmtV(q.v) }],
+        t0: G.window && frames.length ? tStart : undefined, t1: G.window && frames.length ? tEnd : undefined, width: 1300, height: 170, sync: 'graph', label: g.label + ' over time', fmtV,
+        fmtAxis: (v) => Number.isInteger(v) ? v.toLocaleString() : String(+v.toPrecision(4)),
+        fmtT: (t) => t.toFixed(G.window && G.window <= 10 ? 2 : 1) + ' s', empty: frames.length ? 'No frames with this ID in the window.' : (G.source === 'live' ? 'Nothing captured yet: press “Capture these live”.' : 'No frames in this source.') })));
+  });
+  return wrap;
+}
+
+function graphView() {
+  const G = state.graph;
+  const all = dbcAllSignals();
+  const label = (x) => `${hex(x.m.id, x.m.ext)} ${x.m.name}.${x.s.name}`;
+  const whereSel = (val, on) => h('select', { onchange: (e) => on(+e.target.value) }, Object.entries(WHERE).map(([b, n]) => h('option', { value: b, selected: +b === val }, n)));
+  let dbcWhere = 1, dbcPick = null;
+  const dbcIn = h('input', { list: 'graphDbc', placeholder: 'DBC signal…', style: 'width:300px', onchange: (e) => {
+    dbcPick = all.find(a => label(a) === e.target.value) || null;
+    if (dbcPick && dbcPick.f.bus >= 0) { dbcWhere = dbcPick.f.bus ? 2 : 1; wsel.value = dbcWhere; }
+  } });
+  const wsel = whereSel(dbcWhere, (v) => { dbcWhere = v; });
+  const saved = [];
+  for (const [k, list] of Object.entries(sigStore)) { const [ext, id] = k.split(':').map(Number); for (const s of list) saved.push({ id, ext, s }); }
+  let svWhere = 1;
+  const svSel = h('select', {}, h('option', { value: '' }, 'Saved analyzer signal…'), saved.map((x, i) => h('option', { value: i }, `${fmtId(x.id, x.ext)} ${x.s.name}`)));
+  const srcCount = { live: state.monFrames.length, rec: state.rec.frames.length, file: state.rp.file?.frames.length || 0 };
+  return h('div', {},
+    h('div', { class: 'panel' },
+      h('h2', {}, 'Graph signals'),
+      h('p', { class: 'hint' }, 'Plots signals over time: live from the frame monitor, from the last recording, or from a loaded log file. Hover a chart to read every signal at that moment. Pick signals from your DBC files or your saved analyzer signals.'),
+      all.length ? h('div', { class: 'toolbar' }, dbcIn, h('datalist', { id: 'graphDbc' }, all.slice(0, 3000).map(x => h('option', { value: label(x) }))), wsel,
+        h('button', { onclick: () => {
+          if (!dbcPick) { toast('Type part of a signal name and pick it from the list.', true); return; }
+          const { m, s } = dbcPick;
+          graphAdd({ label: `${m.name}.${s.name}`, where: dbcWhere, id: m.id, ext: m.ext, dbc: 1, def: { ...s }, muxSel: s.mux !== null && s.mux !== 'M' ? { ...m.signals.find(z => z.mux === 'M') } : null });
+        } }, '+ Add')) : h('p', { class: 'muted' }, 'Load DBC files (DBC files tab) to pick signals by name.'),
+      saved.length ? h('div', { class: 'toolbar' }, svSel, whereSel(svWhere, (v) => { svWhere = v; }),
+        h('button', { onclick: () => {
+          const x = saved[+svSel.value]; if (!x) { toast('Pick a saved signal.', true); return; }
+          graphAdd({ label: x.s.name, where: svWhere, id: x.id, ext: x.ext, dbc: 0, def: { ...x.s } });
+        } }, '+ Add')) : null,
+      state.monSel && sigPositions(curSig) ? h('div', { class: 'toolbar' }, h('button', { onclick: () => {
+        const s = state.monSel; graphAdd({ label: curSig.name || `${fmtId(s.id, s.ext)} ${curSig.start}|${curSig.len}`, where: s.where, id: s.id, ext: s.ext, dbc: 0, def: { ...curSig } });
+      } }, '+ Add the bit analyzer’s current selection'), h('span', { class: 'muted' }, `${fmtId(state.monSel.id, state.monSel.ext)} ${curSig.start}|${curSig.len}`)) : null,
+      h('div', { class: 'toolbar', style: 'margin:12px 0 0' },
+        h('b', {}, 'Data'),
+        h('select', { onchange: (e) => { G.source = e.target.value; renderTab(false); } },
+          [['live', `Live: frame monitor (${srcCount.live.toLocaleString()} frames)`], ['rec', `Last recording (${srcCount.rec.toLocaleString()})`], ['file', `Loaded log file (${srcCount.file.toLocaleString()})`]]
+            .map(([v, t]) => h('option', { value: v, selected: G.source === v }, t))),
+        h('b', { style: 'margin-left:8px' }, 'Show'),
+        h('select', { onchange: (e) => { G.window = +e.target.value; renderTab(false); } },
+          [[10, 'last 10 s'], [30, 'last 30 s'], [60, 'last minute'], [300, 'last 5 minutes'], [0, 'everything']].map(([v, t]) => h('option', { value: v, selected: G.window === v }, t))),
+        G.source === 'live' ? h('button', { disabled: !state.connected || !G.sigs.length, title: 'Add monitor filters for these IDs and start the monitor', onclick: graphCaptureLive }, 'Capture these live') : null,
+        G.source === 'live' && state.monOn ? h('span', { class: 'badge ok' }, 'Capturing') : null)),
+    graphCharts());
+}
+
+// ===========================================================================
+// Review changes before Send / Save
+// ===========================================================================
+function canon(m) {
+  const c = JSON.parse(JSON.stringify(m, (k, v) => k.startsWith('_') ? undefined : v));
+  const fr = (o) => { for (const k of ['factor', 'offset']) if (typeof o[k] === 'number') o[k] = Math.fround(o[k]); };
+  for (const g of c.gens || []) { g.sig.forEach(fr); g.base = [...g.base, 0, 0, 0, 0, 0, 0, 0, 0].slice(0, 8).map((v, i) => i < g.len ? v : 0); }
+  for (const x of c.xforms || []) x.ops.forEach(fr);
+  return c;
+}
+function xfName(m, xf) {
+  if (!xf) return '';
+  const base = state.hello?.xfCustom ?? 2;
+  if (xf < base) return XF_LABEL[state.hello?.xf?.[xf]] || 'built-in transform ' + xf;
+  const x = (m.xforms || [])[xf - base];
+  return `transform “${x ? x.name || 'Transform ' + (xf - base + 1) : '#' + (xf - base + 1)}”`;
+}
+function routeHead(r) {
+  const ids = r.last && r.last !== r.first ? `${fmtId(r.first, r.ext)}–${fmtId(r.last, r.ext)}` : fmtId(r.first, r.ext);
+  return `${ids}${r.ext ? ' (29-bit)' : ''} ${DIR_LABEL[r.dir] || ''}`;
+}
+function routeAction(m, r) {
+  if (r.action === 1) return 'drop';
+  let s = 'pass';
+  if (r.xf) s += ' through ' + xfName(m, r.xf);
+  if (r.minMs) s += `, at most every ${r.minMs} ms`;
+  if (r.onChange) s += ', only when the data changes' + (r.hbMs ? ` (and every ${r.hbMs} ms)` : '');
+  return s;
+}
+const yn = (v) => v ? 'on' : 'off';
+const SETTING_DIFFS = [
+  ['Bus A bit rate', m => m.baud[0], v => v / 1000 + ' kbit/s'], ['Bus B bit rate', m => m.baud[1], v => v / 1000 + ' kbit/s'],
+  ['Connectors swapped', m => m.swap, v => v ? 'yes' : 'no'],
+  ['Unrouted A → B', m => m.def[0], v => v ? 'pass' : 'drop'], ['Unrouted B → A', m => m.def[1], v => v ? 'pass' : 'drop'],
+  ['TX max age', m => m.txMaxAge, v => v + ' ms'], ['Button timeout', m => m.btnStale, v => v + ' ms'],
+  ['Buttons frame ID', m => m.btnId * 2 + m.btnExt, (v) => fmtId(v >> 1, v & 1) + (v & 1 ? ' (29-bit)' : '')],
+  ['Bus A hardware filter', m => m.hwFilterA ?? 1, yn],
+];
+
+function diffModels(a, b) {
+  a = canon(a); b = canon(b);
+  const groups = [];
+  const add = (title, items) => { if (items.length) groups.push({ title, items }); };
+  add('Bus settings', SETTING_DIFFS.filter(([, g]) => g(a) !== g(b)).map(([n, g, f]) => ({ k: 'chg', text: `${n}: ${f(g(a))} → ${f(g(b))}` })));
+
+  // Routes: pair rows with the same ID(s), type and direction, in order.
+  const key = (r) => `${r.first}:${r.last && r.last !== r.first ? r.last : r.first}:${r.ext}:${r.dir}`;
+  const pool = new Map();
+  a.routes.forEach((r, i) => { const k = key(r); if (!pool.has(k)) pool.set(k, []); pool.get(k).push(i); });
+  const items = [], pairs = [];
+  b.routes.forEach((r, j) => {
+    const list = pool.get(key(r));
+    if (list && list.length) {
+      const i = list.shift(); pairs.push([i, j]);
+      const o = a.routes[i];
+      const ch = [];
+      if (routeAction(a, o) !== routeAction(b, r)) ch.push(`${routeAction(a, o)} → ${routeAction(b, r)}`);
+      if ((o.note || '') !== (r.note || '')) ch.push(`note “${o.note || ''}” → “${r.note || ''}”`);
+      if (ch.length) items.push({ k: 'chg', text: `${routeHead(r)}: ${ch.join('; ')}` });
+    } else items.push({ k: 'add', text: `New row ${j + 1}: ${routeHead(r)} ${routeAction(b, r)}${r.note ? ` — “${r.note}”` : ''}` });
+  });
+  for (const list of pool.values()) for (const i of list) { const r = a.routes[i]; items.push({ k: 'del', text: `Removed: ${routeHead(r)} ${routeAction(a, r)}${r.note ? ` — “${r.note}”` : ''}` }); }
+  const order = pairs.map(([i]) => i);
+  if (order.some((v, n) => n && v < order[n - 1])) items.push({ k: 'chg', text: 'Row order changed. The first matching row decides, so this can change which row handles an ID.' });
+  add('Routes', items);
+
+  const btnText = (x) => `byte ${x.src} → byte ${x.dst}, mask ${hex(x.mask, 0).slice(1)}${x.taps ? ', catch taps' : ''}`;
+  if (JSON.stringify(a.btn) !== JSON.stringify(b.btn)) {
+    const A = a.btn.map(btnText), B = b.btn.map(btnText);
+    add('Buttons', [...B.filter(x => !A.includes(x)).map(text => ({ k: 'add', text })), ...A.filter(x => !B.includes(x)).map(text => ({ k: 'del', text: 'Removed: ' + text })),
+      ...(A.filter(x => B.includes(x)).length === A.length && B.length === A.length ? [{ k: 'chg', text: 'Row order changed' }] : [])]);
+  }
+
+  const named = (list, nameOf) => { const m = new Map(); list.forEach((x, i) => { let k = nameOf(x) || '#' + i; while (m.has(k)) k += '′'; m.set(k, x); }); return m; };
+  {
+    const A = named(a.gens || [], g => g.name), B = named(b.gens || [], g => g.name), it = [];
+    for (const [k, g] of B) {
+      const o = A.get(k);
+      if (!o) { it.push({ k: 'add', text: `New: “${g.name}” ${fmtId(g.id, g.ext)} on Bus ${g.bus ? 'B' : 'A'} every ${g.period} ms, ${g.on ? 'on' : 'off'}` }); continue; }
+      const d = [];
+      if (o.on !== g.on) d.push(g.on ? 'turned on' : 'turned off');
+      if (o.id !== g.id || o.ext !== g.ext) d.push(`ID ${fmtId(o.id, o.ext)} → ${fmtId(g.id, g.ext)}`);
+      if (o.bus !== g.bus) d.push(`sent on Bus ${o.bus ? 'B' : 'A'} → ${g.bus ? 'B' : 'A'}`);
+      if (o.period !== g.period) d.push(`every ${o.period} → ${g.period} ms`);
+      if (o.len !== g.len) d.push(`length ${o.len} → ${g.len}`);
+      if (JSON.stringify(o.base) !== JSON.stringify(g.base)) d.push('constant bytes changed');
+      if (JSON.stringify(o.sig) !== JSON.stringify(g.sig)) d.push(o.sig.length !== g.sig.length ? `fields ${o.sig.length} → ${g.sig.length}` : 'fields changed');
+      if (d.length) it.push({ k: 'chg', text: `“${g.name}”: ${d.join('; ')}` });
+    }
+    for (const [k, g] of A) if (!B.has(k)) it.push({ k: 'del', text: `Removed: “${g.name}” ${fmtId(g.id, g.ext)}` });
+    add('Generated frames', it);
+  }
+  {
+    const A = named(a.xforms || [], x => x.name), B = named(b.xforms || [], x => x.name), it = [];
+    for (const [k, x] of B) {
+      const o = A.get(k);
+      if (!o) it.push({ k: 'add', text: `New: “${x.name}” (${x.ops.length} steps)` });
+      else if (JSON.stringify(o.ops) !== JSON.stringify(x.ops)) it.push({ k: 'chg', text: `“${x.name}”: ` + (o.ops.length !== x.ops.length ? `${o.ops.length} → ${x.ops.length} steps` : 'steps changed') });
+    }
+    for (const [k, x] of A) if (!B.has(k)) it.push({ k: 'del', text: `Removed: “${x.name}”` });
+    add('Transforms', it);
+  }
+  return groups;
+}
+
+function reviewDialog({ title, intro, groups, ok, sendToggle }) {
+  return new Promise((resolve) => {
+    const dlg = $('#reviewDlg');
+    const n = groups ? groups.reduce((a, g) => a + g.items.length, 0) : 0;
+    const body = groups === null ? null
+      : n ? groups.map(g => h('div', { class: 'rv-group' }, h('h3', {}, g.title),
+          h('ul', {}, g.items.map(x => h('li', { class: 'rv-' + x.k }, h('span', { class: 'rv-mark', 'aria-hidden': 'true' }, x.k === 'add' ? '+' : x.k === 'del' ? '−' : '~'), ' ', h('span', { class: 'sr' }, x.k === 'add' ? 'Added: ' : x.k === 'del' ? '' : 'Changed: '), x.text)))))
+        : h('p', { class: 'muted' }, 'No differences.');
+    const done = (v) => { dlg.close(); resolve(v); };
+    dlg.replaceChildren(
+      h('h2', {}, title),
+      h('p', { class: 'hint' }, intro),
+      h('div', { class: 'rv-body' }, body),
+      sendToggle ? h('label', { class: 'hint', style: 'display:block;margin:10px 0 0' }, h('input', { type: 'checkbox', checked: localStorage.getItem('isolator-review-send') === '1',
+        onchange: (e) => localStorage.setItem('isolator-review-send', e.target.checked ? '1' : '0') }), ' Also show this before every “Send to board”') : null,
+      h('div', { class: 'toolbar', style: 'justify-content:flex-end;margin:14px 0 0' },
+        h('button', { onclick: () => done(false) }, ok ? 'Cancel' : 'Close'),
+        ok ? h('button', { class: 'primary', onclick: () => done(true) }, ok) : null));
+    dlg.onclose = () => resolve(false);
+    dlg.showModal();
+  });
+}
+
+async function reviewForSave() {
+  const next = state.editDirty ? state.edit : fromBoard(state.board);
+  let groups = null, intro;
+  if (has('getsaved')) {
+    let s = null;
+    try { s = await cmd.getSaved(); } catch (e) { toast(e.message, true); }
+    if (s && !s.none) { groups = diffModels(fromBoard(s), next); intro = 'Differences between the settings saved on the board and what will be saved now.'; }
+    else if (s) intro = s.bad ? 'The settings saved on the board are damaged or from an unknown version, so the board runs the factory defaults. Saving replaces them with everything in this page.'
+                              : 'Nothing is saved on the board yet (it starts on the factory defaults). Saving stores everything in this page.';
+    else intro = 'Couldn’t read the saved settings. Saving stores everything in this page.';
+  } else {
+    groups = diffModels(fromBoard(state.board), next);
+    intro = 'This firmware can’t report its saved settings, so these are the differences from what the board is running now.';
+  }
+  return reviewDialog({ title: 'Save to board', intro, groups, ok: 'Save', sendToggle: true });
+}
+
+async function reviewForSend(always) {
+  if (!always && localStorage.getItem('isolator-review-send') !== '1') return true;
+  return reviewDialog({ title: 'Send to board', intro: 'Differences between what the board is running now and this page. Send runs them straight away (not saved).',
+    groups: diffModels(fromBoard(state.board), state.edit), ok: 'Send', sendToggle: true });
+}
+
+// ===========================================================================
 // File export / import
 // ===========================================================================
 function exportFile() {
@@ -2870,7 +3944,8 @@ $('#tabs').addEventListener('click', (e) => {
   if (t.dataset.tab === 'help') { openHelp(state.tab === 'help' ? 'start' : HELP_FOR_TAB[state.tab]); return; }
   state.tab = t.dataset.tab; renderTab(false);
 });
-$('#btnSend').addEventListener('click', actSend);
+$('#btnSend').addEventListener('click', () => actSend());
+$('#btnReview').addEventListener('click', async () => { if (await reviewForSend(true)) actSend(true); });
 $('#btnSave').addEventListener('click', actSave);
 $('#btnDiscard').addEventListener('click', actDiscard);
 $('#btnExport').addEventListener('click', exportFile);

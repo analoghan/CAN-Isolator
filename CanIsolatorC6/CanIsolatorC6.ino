@@ -81,13 +81,13 @@
 //   RS and shutdown are driven LOW at boot (transceiver active).
 //
 //   Which connector each bus uses is the "swap" setting:
-//     off (default) : Bus A (noisy) = CAN0,  Bus B (M1) = CAN1
-//     on            : Bus A (noisy) = CAN1,  Bus B (M1) = CAN0
+//     off (default) : Bus A (chassis) = CAN0,  Bus B (ECU) = CAN1
+//     on            : Bus A (chassis) = CAN1,  Bus B (ECU) = CAN0
 //   Only the physical connector changes. All routing, generated frames, and
-//   stats keep the same meaning: A is always the noisy side, B is the M1.
+//   stats keep the same meaning: A is always the chassis side, B is the ECU.
 //   120 ohm termination is a solder jumper per channel (open from the
 //   factory). Bridge it only if the isolator is at a physical end of that
-//   bus. On the M1 side the isolator is normally one of only two nodes, so
+//   bus. On the ECU side the isolator is normally one of only two nodes, so
 //   that side usually needs it.
 //
 //   Status LED (RGB, GPIO8), updated twice a second:
@@ -131,7 +131,7 @@
 #include "nvs_flash.h"
 #include "mbedtls/base64.h"
 
-#define FW_VERSION_STR "2.5.5"
+#define FW_VERSION_STR "2.6.0"
 static const char    *FW_NAME       = "CanIsolatorC6";
 static const char    *FW_VERSION    = FW_VERSION_STR;
 // Marker the config tool looks for in a .bin before updating, so it can show
@@ -175,8 +175,8 @@ static const uint8_t    PIN_LED    = 8;          // addressable RGB status LED
 static const uint8_t    PIN_BOOT   = 9;          // BOOT button, LOW = pressed
 static const uint32_t   FACTORY_RESET_HOLD_MS = 3000;
 
-static const uint8_t BUS_A = 0;   // noisy side
-static const uint8_t BUS_B = 1;   // MoTeC M1
+static const uint8_t BUS_A = 0;   // chassis side
+static const uint8_t BUS_B = 1;   // standalone ECU
 
 // Bit rates the tool may choose.
 static const uint32_t VALID_BAUDS[] = { 125000, 250000, 500000, 1000000 };
@@ -279,8 +279,8 @@ enum CfgSource : uint8_t { SRC_DEFAULTS, SRC_SAVED, SRC_SAVED_BAD };
 // ---------------------------------------------------------------------------
 // FACTORY DEFAULTS (edit these to change what a fresh / reset board runs)
 // ---------------------------------------------------------------------------
-// Bus A = noisy side (ABS, keypad / buttons, gauge board, ...)
-// Bus B = quiet side (MoTeC M1)
+// Bus A = chassis side (ABS, keypad / buttons, gauge board, ...)
+// Bus B = standalone ECU (the factory defaults below are for a MoTeC M1 install)
 static const uint32_t ID_ABS     = 0x2B2;   // 690: ABS frame on Bus A, forwarded to the M1 with buttons merged in
 static const uint32_t ID_BUTTONS = 0x178;   // 376: steering wheel on Bus A, forwarded AND extra bytes copied into ABS
 
@@ -289,11 +289,11 @@ static const uint32_t DEFAULT_BAUD_B = 500000;
 static const bool     DEFAULT_SWAP_CAN_CHANNELS = false;
 
 // What to do with IDs that are NOT in the route table.
-// A->B (noisy -> MoTeC): whitelist. Only what the route table allows reaches
-//   the M1. This is what fixes the M1 transmit overload.
-// B->A (MoTeC -> noisy): pass everything. Before the isolator, every M1 frame
-//   was already on the noisy bus, so this adds no load there, and every
-//   noisy-side device that listens to the M1 keeps working.
+// A->B (chassis -> ECU): whitelist. Only what the route table allows reaches
+//   the ECU, which protects it from chassis-bus overload.
+// B->A (ECU -> chassis): pass everything. Before the isolator, every ECU frame
+//   was already on the chassis bus, so this adds no load there, and every
+//   chassis-side device that listens to the ECU keeps working.
 static const bool DEFAULT_FORWARD_A_TO_B = false;
 static const bool DEFAULT_FORWARD_B_TO_A = true;
 
@@ -305,7 +305,7 @@ static const uint16_t DEFAULT_TX_MAX_AGE_MS = 50;
 // Steering wheel frame older than this = wheel offline: mapped bits read 0.
 static const uint16_t DEFAULT_BUTTON_STALE_MS = 250;
 
-// Hardware acceptance filter on Bus A (noisy side): frames the isolator has
+// Hardware acceptance filter on Bus A (chassis side): frames the isolator has
 // no use for are rejected by the CAN controller itself, before they cost an
 // interrupt. See HARDWARE FILTER. Only active while unrouted A->B IDs are
 // dropped (whitelist).
@@ -327,11 +327,11 @@ static const ButtonMapCfg DEFAULT_BUTTON_MAP[] = {
 // keep minMs at 100 or below on those IDs.
 static const RouteCfg DEFAULT_ROUTES[] = {
   //  first       last ext dir     action xf                minMs onChg hbMs  note (max 23 chars)
-  // ===== Bus A (noisy) -> Bus B (MoTeC M1): whitelist =====
+  // ===== Bus A (chassis) -> Bus B (ECU): whitelist =====
   { ID_ABS,       0,   0,  A_TO_B, PASS,  XF_MERGE_BUTTONS, 0,    0,    0,    "ABS + wheel buttons"     },
   { ID_BUTTONS,   0,   0,  A_TO_B, PASS,  XF_NONE,          0,    0,    0,    "Steering wheel buttons"  },
   { 0x0CE,        0,   0,  A_TO_B, PASS,  XF_NONE,          0,    0,    0,    "ABS wheel speeds"        },
-  // ===== Bus B (MoTeC M1) -> Bus A (noisy): M1 output used by the gauge board =====
+  // ===== Bus B (ECU) -> Bus A (chassis): ECU output used by the gauge board =====
   { 0x640,        0,   0,  B_TO_A, PASS,  XF_NONE,          0,    0,    0,    "Gauge: MAP"              },
   { 0x641,        0,   0,  B_TO_A, PASS,  XF_NONE,          0,    0,    0,    "Gauge: fuel press, inj"  },
   { 0x644,        0,   0,  B_TO_A, PASS,  XF_NONE,          0,    0,    0,    "Gauge: oil pressure"     },
@@ -466,7 +466,7 @@ bool xfMergeButtons(CAN_message_t &msg) {
 static const TransformFn XF_FNS[NUM_XF] = { nullptr, xfMergeButtons };
 
 // ---------------------------------------------------------------------------
-// GENERATED FRAMES (built by the isolator instead of the M1)
+// GENERATED FRAMES (built by the isolator instead of the ECU; defaults: MoTeC M1 + Aston cluster)
 // ---------------------------------------------------------------------------
 // The Aston Martin cluster frames used to be M1 "CAN Transmit Custom"
 // messages 1-3. Each one is a fixed 8-byte pattern plus a single live value
@@ -598,9 +598,19 @@ struct BusStats {
   uint32_t txOverflow;    // TX ring full (bus saturated / not acked)
   uint32_t txStale;       // discarded: waited longer than the TX max age
   uint32_t busOffEvents;  // transitions into bus-off
+  uint32_t bits;          // approximate bits on the wire: frames received + frames sent (bus load)
 };
 static BusStats stats[2];
 static volatile uint32_t rxOverflowIsr[2];
+static uint32_t loadPeakBits[2];     // most bits in one 100 ms window since the last 'stat'
+static bool     rpInjecting = false; // a replayed frame is being fed in "as received": not real bus traffic
+
+// Approximate length on the wire, including typical stuff bits and the
+// 3-bit gap after the frame. Good enough for a load percentage.
+static inline uint32_t frameBits(const CAN_message_t &m) {
+  const uint32_t d = m.flags.remote ? 0 : 8u * m.len;
+  return m.flags.extended ? 67 + d + (54 + d) / 10 : 47 + d + (34 + d) / 10;
+}
 
 // Timing health (reset each time the tool reads 'stat'): the longest loop
 // pass and which step took longest in it, the longest a received frame waited
@@ -632,6 +642,7 @@ static TxSlot            txSlot[2];
 static volatile bool     txBusy[2];
 static volatile uint8_t  busState[2];        // twai_error_state_t, updated from the ISR
 static volatile bool     busTrouble[2];      // went passive / bus-off since last LED update
+static volatile uint8_t  busWorst[2];        // worst state since the health check last looked (catches short trips)
 
 static inline bool wakeLoopFromIsr() {
   BaseType_t woken = pdFALSE;
@@ -667,6 +678,7 @@ static bool onTxDone(twai_node_handle_t, const twai_tx_done_event_data_t *, void
 static bool onStateChange(twai_node_handle_t, const twai_state_change_event_data_t *e, void *ctx) {
   const uint8_t bus = (uint8_t)(uintptr_t)ctx;
   busState[bus] = (uint8_t)e->new_sta;
+  if ((uint8_t)e->new_sta > busWorst[bus]) busWorst[bus] = (uint8_t)e->new_sta;
   if (e->new_sta == TWAI_ERROR_PASSIVE || e->new_sta == TWAI_ERROR_BUS_OFF) busTrouble[bus] = true;
   // Leaving bus-off: the driver abandons the frame that was in flight without
   // a tx-done callback, so the slot is free again.
@@ -785,6 +797,7 @@ static void drainTx(uint8_t bus) {
     }
     if (monOn) monRecord(4 << bus, *m, (uint32_t)(esp_timer_get_time() / 100));
     { uint32_t w = (uint16_t)(now16 - m->timestamp); if (w > diagTxWaitMs) diagTxWaitMs = w; }
+    stats[bus].bits += frameBits(*m);
     txRing[bus].drop();
     stats[bus].tx++;
   }
@@ -1018,7 +1031,7 @@ static bool isGeneratedCopy(uint8_t src, const CAN_message_t &m1) {
 // ---------------------------------------------------------------------------
 static const uint16_t SNIFF_SLOTS = 256;   // hash table, power of 2
 static const uint16_t SNIFF_MAX   = 200;   // distinct IDs per bus
-struct SniffEntry { uint32_t id; uint32_t count; uint8_t used, ext, len; uint8_t data[8]; };
+struct SniffEntry { uint32_t id; uint32_t count; uint8_t used, ext, len, has; uint8_t data[8]; uint8_t chg[8]; };   // chg: bits that changed since the last dump
 static SniffEntry sniffTab[2][SNIFF_SLOTS];
 static uint16_t   sniffN[2];
 static uint32_t   sniffLost[2];
@@ -1043,6 +1056,8 @@ static void sniffRecord(uint8_t bus, const CAN_message_t &m) {
     } else if (e.id != m.id || e.ext != (uint8_t)m.flags.extended) {
       continue;
     }
+    if (e.has) for (uint8_t i = 0; i < 8; i++) e.chg[i] |= e.data[i] ^ m.buf[i];
+    e.has = 1;
     e.count++; e.len = m.len; memcpy(e.data, m.buf, 8);
     return;
   }
@@ -1084,6 +1099,7 @@ static void handleFrame(uint8_t src, const CAN_message_t &rxRaw, uint32_t now) {
   for (uint8_t i = rx.len; i < 8; i++) rx.buf[i] = 0;
 
   stats[src].rx++;
+  if (!rpInjecting) stats[src].bits += frameBits(rx);
   {
     uint32_t waitUs = ((uint32_t)(esp_timer_get_time() / 100) - rx.t100us) * 100;
     if (waitUs > diagRxWaitUs) diagRxWaitUs = waitUs;
@@ -1132,17 +1148,129 @@ static void handleFrame(uint8_t src, const CAN_message_t &rxRaw, uint32_t now) {
 // The TWAI controller stays off the bus after bus-off until it is told to
 // recover, so this starts recovery (which itself waits for 128 x 11
 // recessive bits, as the CAN standard requires) and counts events.
-static void checkBusHealth() {
-  static bool wasBusOff[2] = { false, false };
+// ---------------------------------------------------------------------------
+// Event log (RAM, since power-up): bus state changes and trouble counters, so
+// the tool can show what happened while nobody was watching. Repeats of the
+// same trouble within 2 s extend the previous entry instead of adding one.
+// ---------------------------------------------------------------------------
+enum : uint8_t { EV_START = 0, EV_STATE = 1, EV_BUSERR = 2, EV_RXOVF = 3, EV_TXOVF = 4, EV_STALE = 5 };
+struct EvRec { uint32_t t, t2, count; uint8_t bus, kind, a, pad; };
+static const uint8_t EV_N = 64;
+static EvRec    evLog[EV_N];
+static uint8_t  evHead = 0, evCount = 0;
+static uint32_t evChanges = 0;     // bumps on every add/extend: the tool re-reads the log when it changes
+static uint32_t evDropped = 0;     // oldest entries overwritten
+
+static void evAdd(uint8_t bus, uint8_t kind, uint8_t a, uint32_t count, uint32_t now) {
+  if (kind != EV_STATE && kind != EV_START) {
+    for (uint8_t k = 0; k < evCount && k < 6; k++) {          // the newest entry of this bus and kind
+      EvRec &e = evLog[(evHead + EV_N - 1 - k) % EV_N];
+      if (e.bus != bus || e.kind != kind) continue;
+      if (now - e.t2 <= 2000) { e.t2 = now; e.count += count; evChanges++; return; }
+      break;
+    }
+  }
+  evLog[evHead] = { now, now, count, bus, kind, a, 0 };
+  evHead = (evHead + 1) % EV_N;
+  if (evCount < EV_N) evCount++; else evDropped++;
+  evChanges++;
+}
+
+// ---------------------------------------------------------------------------
+// Bus health
+// ---------------------------------------------------------------------------
+// The TWAI controller stays off the bus after bus-off until it is told to
+// recover, so this starts recovery (which itself waits for 128 x 11
+// recessive bits, as the CAN standard requires), counts events, logs them,
+// and keeps the bus-load peak (100 ms windows).
+static void checkBusHealth(uint32_t now) {
+  static bool     wasBusOff[2] = { false, false };
+  static uint8_t  lastState[2] = { 0, 0 };
+  static uint32_t lastSecMs = 0, winMs = 0;
+  static uint32_t lastBerr[2], lastRxOvf[2], lastTxOvf[2], lastStale[2], winBits[2];
   for (uint8_t b = 0; b < 2; b++) {
     if (!canOk[b]) continue;
-    bool busOff = busState[b] == TWAI_ERROR_BUS_OFF;
+    const uint8_t st = busState[b], worst = busWorst[b];
+    busWorst[b] = st;
+    if (worst > st && worst > lastState[b]) { evAdd(b, EV_STATE, worst, 0, now); lastState[b] = worst; }
+    if (st != lastState[b]) { evAdd(b, EV_STATE, st, 0, now); lastState[b] = st; }
+    bool busOff = st == TWAI_ERROR_BUS_OFF;
     if (busOff && !wasBusOff[b]) {
       stats[b].busOffEvents++;
       twai_node_recover(canNode[b]);
     }
     wasBusOff[b] = busOff;
     stats[b].rxOverflow = rxOverflowIsr[b];
+  }
+  if (now - winMs >= 100) {
+    const uint32_t span = now - winMs;
+    winMs = now;
+    for (uint8_t b = 0; b < 2; b++) {
+      const uint32_t d = stats[b].bits - winBits[b];
+      winBits[b] = stats[b].bits;
+      if (span <= 150) { const uint32_t per100 = d * 100 / span; if (per100 > loadPeakBits[b]) loadPeakBits[b] = per100; }
+    }
+  }
+  if (now - lastSecMs >= 1000) {
+    lastSecMs = now;
+    for (uint8_t b = 0; b < 2; b++) {
+      if (!canOk[b]) continue;
+      twai_node_status_t st = {};
+      twai_node_record_t rec = {};
+      twai_node_get_info(canNode[b], &st, &rec);
+      const uint32_t be = rec.bus_err_num;
+      if (be > lastBerr[b]) evAdd(b, EV_BUSERR, 0, be - lastBerr[b], now);
+      lastBerr[b] = be;
+      const BusStats &s = stats[b];
+      if (s.rxOverflow > lastRxOvf[b]) evAdd(b, EV_RXOVF, 0, s.rxOverflow - lastRxOvf[b], now);
+      if (s.txOverflow > lastTxOvf[b]) evAdd(b, EV_TXOVF, 0, s.txOverflow - lastTxOvf[b], now);
+      if (s.txStale > lastStale[b])    evAdd(b, EV_STALE, 0, s.txStale - lastStale[b], now);
+      lastRxOvf[b] = s.rxOverflow; lastTxOvf[b] = s.txOverflow; lastStale[b] = s.txStale;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Replay: the tool streams recorded frames with their times. Each is sent on
+// a bus, or fed into the routing as if it had been received on a bus (bench
+// testing without the car). Stops by itself 5 s after the tool goes quiet.
+// ---------------------------------------------------------------------------
+static const uint16_t RP_RING        = 1024;   // power of 2
+static const uint32_t RP_AUTO_OFF_MS = 5000;
+static const int32_t  RP_GAP_100US   = 1000;   // ran dry and now >100 ms behind: pause the clock rather than burst
+struct RpRec { uint32_t t; uint8_t mode; CAN_message_t m; };   // t: 0.1 ms from the start; mode 0/1 send on A/B, 2/3 feed in as received on A/B
+static RpRec    rpRing[RP_RING];
+static uint16_t rpHead = 0, rpTail = 0;
+static bool     rpOn = false, rpRun = false, rpEnd = false, rpDry = false;
+static int64_t  rpT0us = 0;
+static uint32_t rpSent = 0, rpLate = 0, rpGaps = 0, rpAt = 0;
+static inline uint16_t rpUsed() { return (uint16_t)(rpHead - rpTail) & (RP_RING - 1); }
+static inline uint16_t rpFree() { return RP_RING - 1 - rpUsed(); }
+static void rpStop() { rpOn = rpRun = rpEnd = rpDry = false; rpHead = rpTail = 0; }
+
+static void rpService(uint32_t now) {
+  if (!rpRun) return;
+  if (now - lastHostMs > RP_AUTO_OFF_MS) { rpStop(); return; }
+  const uint32_t tNow = (uint32_t)((esp_timer_get_time() - rpT0us) / 100);
+  for (uint8_t n = 0; n < 32; n++) {
+    if (rpTail == rpHead) { if (rpEnd) rpRun = false; else rpDry = true; return; }
+    RpRec &r = rpRing[rpTail];
+    const int32_t late = (int32_t)(tNow - r.t);
+    if (late < 0) return;
+    if (rpDry && late > RP_GAP_100US) {              // the tool fell behind: carry on from here
+      rpT0us += (int64_t)late * 100; rpGaps++; rpDry = false; return;
+    }
+    rpDry = false;
+    if (late > 500) rpLate++;                       // more than 50 ms behind its time
+    rpAt = r.t;
+    if (r.mode < 2) { if (queueTx(r.mode, r.m)) rpSent++; }
+    else {
+      CAN_message_t m = r.m;
+      m.t100us = (uint32_t)(esp_timer_get_time() / 100);
+      rpInjecting = true; handleFrame(r.mode - 2, m, now); rpInjecting = false;
+      rpSent++;
+    }
+    rpTail = (rpTail + 1) & (RP_RING - 1);
   }
 }
 
@@ -1656,32 +1784,32 @@ static void sendHello() {
         FW_TAG, run ? run->label : "?", nxt ? (unsigned long)nxt->size : 0UL, fwPendingVerify, last != nullptr,
         cfgPartOk ? CFG_PART : "nvs");
   }
-  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\"],\"monFilters\":%u,\"txpSlots\":%u}",
-      resetReasonName(), canOk[0], canOk[1], MON_MAX_FILTERS, TXP_SLOTS);
+  lbf(",\"reset\":\"%s\",\"canOk\":[%u,%u],\"features\":[\"mon\",\"txp\",\"gen2\",\"ota\",\"xf\",\"rp\",\"ev\",\"load\",\"chg\",\"getsaved\"],\"monFilters\":%u,\"txpSlots\":%u,\"rpRing\":%u}",
+      resetReasonName(), canOk[0], canOk[1], MON_MAX_FILTERS, TXP_SLOTS, RP_RING);
   lbSend();
 }
 
-static void sendConfig() {
+static void sendConfig(const Config &c, bool running) {
   lbStart();
   lbf("{\"t\":\"cfg\",\"baud\":[%lu,%lu],\"swap\":%u,\"def\":[%u,%u],\"txMaxAge\":%u,\"btnStale\":%u,"
       "\"btnId\":%lu,\"btnExt\":%u,\"hwFilterA\":%u,",
-      (unsigned long)cfg.baud[0], (unsigned long)cfg.baud[1], cfg.swapChannels, cfg.defFwd[0], cfg.defFwd[1],
-      cfg.txMaxAgeMs, cfg.buttonStaleMs, (unsigned long)cfg.buttonsId, cfg.buttonsExt, cfg.hwFilterA);
+      (unsigned long)c.baud[0], (unsigned long)c.baud[1], c.swapChannels, c.defFwd[0], c.defFwd[1],
+      c.txMaxAgeMs, c.buttonStaleMs, (unsigned long)c.buttonsId, c.buttonsExt, c.hwFilterA);
   lbf("\"btn\":[");
-  for (uint8_t i = 0; i < cfg.numButtonMap; i++) {
-    const ButtonMapCfg &m = cfg.buttonMap[i];
+  for (uint8_t i = 0; i < c.numButtonMap; i++) {
+    const ButtonMapCfg &m = c.buttonMap[i];
     lbf("%s[%u,%u,%u,%u]", i ? "," : "", m.src, m.dst, m.mask, m.catchTaps);
   }
   lbf("],\"routes\":[");
-  for (uint16_t i = 0; i < cfg.numRoutes; i++) {
-    const RouteCfg &r = cfg.routes[i];
+  for (uint16_t i = 0; i < c.numRoutes; i++) {
+    const RouteCfg &r = c.routes[i];
     lbf("%s[%lu,%lu,%u,%u,%u,%u,%u,%u,%u,\"%s\"]", i ? "," : "",
         (unsigned long)r.idFirst, (unsigned long)r.idLast, r.ext, r.dir, r.action, r.xf,
         r.minMs, r.onChange, r.hbMs, r.note);
   }
   lbf("],\"xforms\":[");
-  for (uint8_t i = 0; i < cfg.numXf; i++) {
-    const XfCfg &x = cfg.xforms[i];
+  for (uint8_t i = 0; i < c.numXf; i++) {
+    const XfCfg &x = c.xforms[i];
     lbf("%s{\"name\":\"%s\",\"ops\":[", i ? "," : "", x.name);
     for (uint8_t k = 0; k < x.numOps; k++) {
       const XfOpCfg &o = x.ops[k];
@@ -1694,8 +1822,8 @@ static void sendConfig() {
     lbf("]}");
   }
   lbf("],\"gens\":[");
-  for (uint8_t i = 0; i < cfg.numGen; i++) {
-    const GenCfg &g = cfg.gens[i];
+  for (uint8_t i = 0; i < c.numGen; i++) {
+    const GenCfg &g = c.gens[i];
     lbf("%s{\"name\":\"%s\",\"id\":%lu,\"ext\":%u,\"bus\":%u,\"period\":%u,\"len\":%u,\"on\":%u,\"base\":",
         i ? "," : "", g.name, (unsigned long)g.id, g.ext, g.bus, g.periodMs, g.len, g.enabled);
     lbHex(g.base, 8);
@@ -1709,7 +1837,8 @@ static void sendConfig() {
     }
     lbf("]}");
   }
-  lbf("],\"src\":\"%s\",\"saved\":%u,\"dirty\":%u,\"restart\":%u,\"hw\":{\"baud\":[%lu,%lu],\"swap\":%u}}",
+  if (!running) { lbf("],\"which\":\"saved\"}"); lbSend(); return; }
+  lbf("],\"which\":\"running\",\"src\":\"%s\",\"saved\":%u,\"dirty\":%u,\"restart\":%u,\"hw\":{\"baud\":[%lu,%lu],\"swap\":%u}}",
       CFG_SOURCE_NAMES[cfgSource], haveSaved, isDirty(), needsRestart(),
       (unsigned long)hwBaud[0], (unsigned long)hwBaud[1], hwSwap);
   lbSend();
@@ -1740,12 +1869,14 @@ static void sendStats() {
     if (canOk[b]) twai_node_get_info(canNode[b], &st, &rec);
     const BusStats &s = stats[b];
     lbf("%s{\"rx\":%lu,\"fwd\":%lu,\"filt\":%lu,\"supp\":%lu,\"tx\":%lu,\"rxOvf\":%lu,\"txOvf\":%lu,"
-        "\"stale\":%lu,\"boff\":%lu,\"st\":%u,\"tec\":%u,\"rec\":%u,\"berr\":%lu,\"ch\":%u}",
+        "\"stale\":%lu,\"boff\":%lu,\"st\":%u,\"tec\":%u,\"rec\":%u,\"berr\":%lu,\"ch\":%u,\"bits\":%lu,\"pk\":%lu}",
         b ? "," : "", (unsigned long)s.rx, (unsigned long)s.fwd, (unsigned long)s.filtered,
         (unsigned long)s.suppressed, (unsigned long)s.tx, (unsigned long)s.rxOverflow,
         (unsigned long)s.txOverflow, (unsigned long)s.txStale, (unsigned long)s.busOffEvents,
         canOk[b] ? (unsigned)busState[b] : 9u, st.tx_error_count, st.rx_error_count,
-        (unsigned long)rec.bus_err_num, busChannel[b]);
+        (unsigned long)rec.bus_err_num, busChannel[b], (unsigned long)s.bits,
+        (unsigned long)(hwBaud[b] ? (uint64_t)loadPeakBits[b] * 10000 / hwBaud[b] : 0));   // peak load, per mille
+    loadPeakBits[b] = 0;
   }
   lbf("],\"test\":[%lu,%lu],\"txp\":[", (unsigned long)testSent[0], (unsigned long)testSent[1]);
   for (uint8_t i = 0; i < TXP_SLOTS; i++) lbf("%s[%u,%lu]", i ? "," : "", txp[i].on, (unsigned long)txp[i].sent);
@@ -1763,7 +1894,32 @@ static void sendStats() {
     lbHex(m1LastBuf[i], m1Seen[i] ? m1LastLen[i] : 0);
     lbf("}");
   }
-  lbf("]}");
+  lbf("],\"ev\":%lu,\"rp\":[%u,%u,%u,%lu,%lu,%lu,%u]}", (unsigned long)evChanges,
+      rpOn, rpRun, rpEnd, (unsigned long)rpSent, (unsigned long)rpLate, (unsigned long)rpGaps, rpFree());
+  lbSend();
+}
+
+// The event log, oldest first: [t ms, last ms, bus, kind, a, count].
+// kind 0 board started, 1 bus state (a = 0 active, 1 warning, 2 passive,
+// 3 bus-off), 2 bus errors, 3 RX overflow, 4 TX overflow, 5 stale TX dropped.
+static void sendEvents() {
+  lbStart();
+  lbStr("{\"t\":\"ev\",\"up\":"); lbU(millis()); lbStr(",\"n\":"); lbU(evChanges); lbStr(",\"dropped\":"); lbU(evDropped);
+  lbStr(",\"e\":[");
+  for (uint8_t k = 0; k < evCount; k++) {
+    const EvRec &e = evLog[(evHead + EV_N - evCount + k) % EV_N];
+    if (k) lbPut(',');
+    lbPut('['); lbU(e.t); lbPut(','); lbU(e.t2); lbPut(','); lbU(e.bus); lbPut(','); lbU(e.kind); lbPut(',');
+    lbU(e.a); lbPut(','); lbU(e.count); lbPut(']');
+  }
+  lbStr("]}");
+  lbSend();
+}
+
+static void sendRp(const char *re, int added) {
+  lbStart();
+  lbf("{\"t\":\"ok\",\"re\":\"%s\",\"on\":%u,\"run\":%u,\"end\":%u,\"free\":%u,\"sent\":%lu,\"late\":%lu,\"gaps\":%lu,\"at\":%lu,\"n\":%d}",
+      re, rpOn, rpRun, rpEnd, rpFree(), (unsigned long)rpSent, (unsigned long)rpLate, (unsigned long)rpGaps, (unsigned long)rpAt, added);
   lbSend();
 }
 
@@ -1781,12 +1937,14 @@ static void sendSniff() {
     for (uint16_t i = 0; i < SNIFF_SLOTS; i++) {
       SniffEntry &e = sniffTab[b][i];
       if (!e.used) continue;
-      if (lbRoom() < 80) { more = true; break; }
+      if (lbRoom() < 100) { more = true; break; }
       if (!first) lbPut(',');
       lbPut('['); lbU(e.id); lbPut(','); lbU(e.ext); lbPut(','); lbU(e.count); lbPut(','); lbU(e.len); lbPut(',');
-      lbHex(e.data, e.len);
+      lbHex(e.data, e.len); lbPut(',');
+      lbHex(e.chg, 8);
       lbPut(']');
       e.count = 0;
+      memset(e.chg, 0, 8);
       first = false;
     }
     lbStr("],\"more\":"); lbU(more); lbPut('}');
@@ -1814,6 +1972,11 @@ static void sendSniff() {
 //                                                     4 A TX, 8 B TX; ext 0/1, 2 = either
 //   mon on | off | clear       -> ok
 //   mon                        -> {"t":"mon","f":[[t_0.1ms,where,id,ext,"hex"],...],"more":0|1}
+//   ev                         -> {"t":"ev","e":[[t,lastT,bus,kind,a,count],...]}   event log since power-up
+//   get saved                  -> {"t":"cfg","which":"saved",...} or {...,"none":1}   settings in flash
+//   rp start | go | end | off  -> ok {on,run,end,free,sent,late,gaps,at}   replay control
+//   rpa <t>,<mode>,<id>,<ext>,<hex> ...  -> ok {...,"n":added}   queue replay frames (hex numbers;
+//                                         t 0.1 ms from go; mode 0/1 send on A/B, 2/3 feed in as received on A/B)
 //
 //   begin                      -> ok      start a new settings upload (starts from the running
 //                                         settings with no routes, button map rows or generated frames)
@@ -2118,6 +2281,38 @@ static void runConfig(CfgSource src) {
   applyConfig();
 }
 
+// rpa <t>,<mode>,<id>,<ext>,<hex> ...   all numbers hex; t in 0.1 ms from the start.
+// Adds as many frames as fit; the reply's "n" says how many (the tool resends the rest).
+static inline uint8_t hexVal(char c) { return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10; }
+static void cmdRpa(char *p) {
+  if (!rpOn) { replyErr("rpa", "send rp start first"); return; }
+  int added = 0;
+  for (;;) {
+    p = skipSpaces(p);
+    if (!*p || rpFree() == 0) break;
+    uint32_t v[4];
+    for (uint8_t k = 0; k < 4; k++) {
+      char *e;
+      v[k] = strtoul(p, &e, 16);
+      if (e == p || *e != ',') { replyErr("rpa", "bad frame: use t,mode,id,ext,hex"); return; }
+      p = e + 1;
+    }
+    if (v[1] > 3 || v[3] > 1 || !validId(v[2], v[3])) { replyErr("rpa", "bad mode, id or ext"); return; }
+    RpRec &r = rpRing[rpHead];
+    r.t = v[0]; r.mode = (uint8_t)v[1];
+    r.m = CAN_message_t();
+    r.m.id = v[2]; r.m.flags.extended = v[3]; r.m.len = 0;
+    while (*p && *p != ' ') {
+      if (r.m.len >= 8 || !isxdigit((unsigned char)p[0]) || !isxdigit((unsigned char)p[1])) { replyErr("rpa", "bad data"); return; }
+      r.m.buf[r.m.len++] = (uint8_t)(hexVal(p[0]) << 4 | hexVal(p[1]));
+      p += 2;
+    }
+    rpHead = (rpHead + 1) & (RP_RING - 1);
+    added++;
+  }
+  sendRp("rpa", added);
+}
+
 static void handleCommand(char *line) {
   char *p = skipSpaces(line);
   if (!*p) return;
@@ -2133,7 +2328,27 @@ static void handleCommand(char *line) {
   else if (!strcmp(cmd, "xf"))    { if (stagingOpen) cmdXf(p);    return; }
   else if (!strcmp(cmd, "xop"))   { if (stagingOpen) cmdXop(p);   return; }
   else if (!strcmp(cmd, "hello")) sendHello();
-  else if (!strcmp(cmd, "get"))   sendConfig();
+  else if (!strcmp(cmd, "get")) {
+    p = skipSpaces(p);
+    if (!strcmp(p, "saved")) {                     // what flash holds (for "review before saving")
+      static Config savedCopy;
+      bool existed;
+      if (loadSaved(savedCopy, existed)) { normalizeConfig(savedCopy); sendConfig(savedCopy, false); }
+      else { lbStart(); lbf("{\"t\":\"cfg\",\"which\":\"saved\",\"none\":1,\"bad\":%u}", existed); lbSend(); }
+    } else sendConfig(cfg, true);
+  }
+  else if (!strcmp(cmd, "ev")) sendEvents();
+  else if (!strcmp(cmd, "rpa")) cmdRpa(p);
+  else if (!strcmp(cmd, "rp")) {
+    p = skipSpaces(p);
+    if (!strcmp(p, "start"))    { rpStop(); rpOn = true; rpSent = rpLate = rpGaps = rpAt = 0; sendRp("rp", 0); }
+    else if (!strcmp(p, "go"))  { if (!rpOn) { replyErr("rp", "send rp start first"); return; }
+                                  rpT0us = esp_timer_get_time(); rpRun = true; rpDry = false; sendRp("rp", 0); }
+    else if (!strcmp(p, "end")) { rpEnd = true; sendRp("rp", 0); }
+    else if (!strcmp(p, "off")) { rpStop(); sendRp("rp", 0); }
+    else if (!*p)               sendRp("rp", 0);
+    else replyErr("rp", "use: rp start | go | end | off");
+  }
   else if (!strcmp(cmd, "stat"))  sendStats();
   else if (!strcmp(cmd, "ping"))  replyOk("ping");
   else if (!strcmp(cmd, "ota"))   cmdOta(p);
@@ -2503,6 +2718,7 @@ void setup() {
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);
 
+  evAdd(0, EV_START, 0, 0, millis());
   xTaskCreate(canTask, "can", 8192, nullptr, CAN_TASK_PRIORITY, &loopTaskHandle);
 }
 
@@ -2558,10 +2774,11 @@ static void canLoopOnce() {
   uint32_t frames = routeFrames(now);  stepDone(0);
   flushPending(now);                   stepDone(1);
   runGenerators(now);                  stepDone(2);
-  runTestFrames(now);                  stepDone(3);
+  runTestFrames(now);
+  rpService(now);                      stepDone(3);
   drainTx(BUS_A);                      stepDone(4);
   drainTx(BUS_B);                      stepDone(5);
-  checkBusHealth();                    stepDone(6);
+  checkBusHealth(now);                 stepDone(6);
   updateLed(now);                      stepDone(7);
 
   // Count the whole pass (routing + TX + health) only when it did real

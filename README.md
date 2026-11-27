@@ -1,7 +1,7 @@
 # CAN Isolator
 
 A two-bus CAN isolator/gateway for the TechOverflow CANipulator (ESP32-C6).
-It sits between a MoTeC M1 ECU (Bus B) and the rest of the car (Bus A). It forwards only the frames you choose, can rate-limit,
+It sits between a standalone ECU (Bus B) and the rest of the car, the chassis side (Bus A). It forwards only the frames you choose, can rate-limit,
 rewrite and generate frames, and is configured from a browser over USB.
 
 ## Layout
@@ -25,8 +25,9 @@ After the first USB flash, later updates can be done from the Config Tool page.
 
 ## Using the Config Tool
 
-Open `ConfigTool/index.html` in Chrome or Edge (on macOS, double-click
-`ConfigTool/Open Config Tool.command`), plug in the board, and click **Connect**.
+Open `ConfigTool/index.html` in Chrome or Edge on macOS, Windows or Linux (double-click
+`ConfigTool/Open Config Tool.command` on a Mac, or `ConfigTool/Open Config Tool.bat` on Windows),
+plug in the board, and click **Connect**.
 See `ConfigTool/README.md` and the in-page **? Help** tab.
 
 ## Hardware
