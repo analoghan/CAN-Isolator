@@ -216,7 +216,7 @@ Measured on the bench with firmware 2.8.0:
 | [`CanIsolatorC6/`](CanIsolatorC6) | Firmware (PlatformIO, Arduino-ESP32 4.x). The USB protocol is documented at `handleCommand()`. |
 | [`ConfigTool/`](ConfigTool) | The browser config tool: one self-contained `index.html` using Web Serial, plus Mac and Windows launchers. |
 | [`Firmware/`](Firmware) | Prebuilt app images for **More… → Update firmware**. Every build copies its image here. |
-| [`docs/`](docs) | [User guide](docs/USER-GUIDE.md) (generated from the in-page help) and images. |
+| [`docs/`](docs) | [User guide](docs/USER-GUIDE.md) (generated from the in-page help), [roadmap](docs/ROADMAP.md) and images. |
 | [`tools/`](tools) | `export-guide.js` regenerates the user guide from the page. |
 | [`CanipulatorTest/`](CanipulatorTest) | Bring-up test firmware for the board: self test, pin test, cross test, listen-only monitor. |
 
@@ -240,6 +240,10 @@ node tools/export-guide.js    # rewrites docs/USER-GUIDE.md
 ### Older hardware
 
 Only the CANipulator (ESP32-C6) is supported. The earlier Teensy 4.0 version is deprecated and preserved at the tag [`teensy-final`](../../tree/teensy-final).
+
+## Roadmap
+
+Features under consideration, including a Bluetooth LE connection for monitoring without USB, are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## License
 
